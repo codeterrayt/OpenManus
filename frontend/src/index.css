@@ -1,0 +1,152 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-background text-text-main font-sans;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading;
+  }
+}
+
+/* Glassmorphism layouts */
+.glass-panel {
+  background: rgba(11, 15, 25, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(36, 48, 65, 0.5);
+}
+
+.glass-card {
+  background: rgba(31, 41, 55, 0.4);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(36, 48, 65, 0.4);
+}
+
+/* Neon text & borders */
+.glow-cyan {
+  text-shadow: 0 0 10px rgba(6, 182, 212, 0.5);
+}
+
+.glow-blue {
+  text-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+}
+
+.border-glow-cyan {
+  box-shadow: 0 0 12px rgba(6, 182, 212, 0.15);
+  border-color: rgba(6, 182, 212, 0.4);
+}
+
+.border-glow-blue {
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.4);
+}
+
+/* Webkit Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(36, 48, 65, 0.8);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(59, 130, 246, 0.5);
+}
+
+/* Streaming cursor effect */
+.streaming-cursor::after {
+  content: '█';
+  display: inline-block;
+  margin-left: 2px;
+  font-size: 0.9em;
+  color: #3b82f6;
+  animation: blink 0.8s steps(2, start) infinite;
+  vertical-align: middle;
+}
+
+@keyframes blink {
+  to { visibility: hidden; }
+}
+
+/* Markdown typography styling */
+.markdown-body table {
+  @apply w-full border-collapse my-4 text-left border border-border-dark rounded-lg overflow-hidden;
+}
+
+.markdown-body th {
+  @apply bg-bg-secondary text-text-main font-semibold p-3 border-b border-border-dark text-sm;
+}
+
+.markdown-body td {
+  @apply p-3 border-b border-border-dark text-sm text-text-muted;
+}
+
+.markdown-body tr:last-child td {
+  @apply border-b-0;
+}
+
+.markdown-body tr:hover td {
+  @apply text-text-main bg-white/5;
+}
+
+.markdown-body p {
+  @apply mb-3 leading-relaxed;
+}
+
+.markdown-body p:last-child {
+  @apply mb-0;
+}
+
+.markdown-body a {
+  @apply text-primary hover:text-secondary underline transition-colors;
+}
+
+.markdown-body ul {
+  @apply list-disc list-inside mb-4 pl-2;
+}
+
+.markdown-body ol {
+  @apply list-decimal list-inside mb-4 pl-2;
+}
+
+.markdown-body li {
+  @apply mb-1;
+}
+
+.markdown-body blockquote {
+  @apply border-l-4 border-primary bg-bg-secondary/50 px-4 py-2 my-4 rounded-r-md text-text-muted italic;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-up {
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Browser page loading bar animation */
+@keyframes loading-bar {
+  0%   { transform: translateX(-100%); }
+  50%  { transform: translateX(0%); }
+  100% { transform: translateX(100%); }
+}
