@@ -7,7 +7,7 @@
 [![React](https://img.shields.io/badge/React-18%2F19-cyan.svg)](https://react.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.0-blueviolet.svg)](https://tailwindcss.com/)
 
-An autonomous "action engine" clone of Manus AI. It reasons, writes code, executes tasks in a secure Docker sandbox, and browses the web — with a **fully interactive remote control browser stream** letting you monitor and guide browser sessions in real time.
+OpenManus is an open-source, local-first autonomous AI action engine designed to orchestrate complex reasoning, coding, and web-browsing workflows. Inspired by the capabilities of next-generation AI assistants like Manus, OpenManus allows developers and power users to deploy agentic loops directly on their machines. The engine handles long-running goals by writing code, executing scripts in an isolated sandbox, and navigating the web, while presenting a real-time interactive remote browser screen. This stream enables users to observe the agent's progress and actively guide the session by interacting with the browser interface in real time.
 
 ---
 
@@ -29,7 +29,7 @@ Select any section below to learn how it works under the hood:
 <details>
 <summary><b>🎭 3 Specialized Agent Roles</b></summary>
 
-You can select between three specialized personas directly in the chat panel to optimize execution:
+OpenManus optimizes performance by offering three specialized agent personas that can be selected directly in the chat panel depending on the task:
 - **`OpenManus` (Autonomous Orchestrator):** The default general-purpose planner that handles standard tasks, tool selection, and reasoning.
 - **`CoderAgent` (Software Developer):** Focuses on code generation, script execution, environment resolution, and math/data tasks inside the Docker sandbox.
 - **`BrowserAgent` (Web Researcher):** Optimizes search, web browsing, scraping, and remote interaction.
@@ -76,9 +76,9 @@ OpenManus features a database-backed **Skills Store** that allows the agent to s
 </details>
 
 <details>
-<summary><b>📂 Dynamic Right Inspector Panel</b></summary>
+<summary><b>📊 Agent Workspace & Session Diagnostics</b></summary>
 
-The Inspector Panel on the right provides tabs for full observability into the agent's work:
+The Diagnostics & Inspector panel on the right side of the interface provides deep visibility into the agent's active session:
 - **Timeline:** Visualization of task steps and agent execution timeline.
 - **Thoughts:** The agent's raw chain-of-thought (thinking blocks) parsed from `<thinking>` tags.
 - **Logs:** Raw logs showing command outputs and terminal execution history.
@@ -97,7 +97,7 @@ Make sure you have these installed:
 - **pnpm** package manager
 - **PostgreSQL** running locally (or via Docker Compose)
 - **Docker Desktop** (with "Expose daemon on tcp://localhost:2375" checked in settings on Windows)
-- **Ollama** running at `http://localhost:11434` with your preferred model pulled (e.g. `ollama pull qwen2.5:7b`)
+- **Ollama (Optional):** If you want to use local models (like `qwen2.5:7b` or `gemma2`). OpenManus also natively supports Groq and OpenAI cloud providers out-of-the-box.
 
 ---
 
