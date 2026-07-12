@@ -82,7 +82,6 @@ const ADVANCED_FIELDS: FieldDef[] = [
   { key: 'MAX_STEPS',             label: 'Max Agent Steps',        type: 'number', placeholder: '100',                   hint: 'Max tool calls per run' },
   { key: 'MAX_TOOL_RESULT_CHARS', label: 'Max Tool Result Chars',  type: 'number', placeholder: '3000',                  hint: 'Truncation limit for tool output' },
   { key: 'CLOAKBROWSER_API_URL',  label: 'Browser API URL',        type: 'url',    placeholder: 'http://localhost:9000', hint: 'CloakBrowser / Puppeteer endpoint' },
-  { key: 'CLOAKBROWSER_API_KEY',  label: 'Browser API Key',        type: 'password', placeholder: '' },
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

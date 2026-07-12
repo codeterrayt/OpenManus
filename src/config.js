@@ -30,7 +30,6 @@ export const config = {
 
   browser: {
     apiUrl:   process.env.CLOAKBROWSER_API_URL ?? 'http://localhost:9000',
-    apiKey:   process.env.CLOAKBROWSER_API_KEY ?? '',
     headless: false,
   },
 
@@ -94,7 +93,6 @@ export async function resolveConfig(getEnvSettingsFn) {
       docker:   config.docker,
       browser: {
         apiUrl:   g('CLOAKBROWSER_API_URL', config.browser.apiUrl),
-        apiKey:   g('CLOAKBROWSER_API_KEY', config.browser.apiKey),
         headless: config.browser.headless,
       },
       api:   config.api,

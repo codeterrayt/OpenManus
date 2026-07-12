@@ -19,7 +19,7 @@ const DOT_ENV_PATH = path.resolve(__dirname, '../../.env');
 
 // Keys whose values should be masked in GET responses
 const SECRET_KEYS = new Set([
-  'GROQ_API_KEY', 'OPENAI_API_KEY', 'CLOAKBROWSER_API_KEY',
+  'GROQ_API_KEY', 'OPENAI_API_KEY',
 ]);
 
 function maskValue(key, value) {

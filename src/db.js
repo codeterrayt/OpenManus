@@ -110,7 +110,6 @@ export async function initDb() {
       ['MAX_STEPS',               '100'],
       ['MAX_TOOL_RESULT_CHARS',   '3000'],
       ['CLOAKBROWSER_API_URL',    'http://localhost:9000'],
-      ['CLOAKBROWSER_API_KEY',    ''],
     ];
 
     for (const [key, value] of defaults) {
