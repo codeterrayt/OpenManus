@@ -36,12 +36,13 @@ OpenManus optimizes performance by offering three specialized agent personas tha
 </details>
 
 <details>
-<summary><b>🔒 Safe Isolated Docker Sandbox</b></summary>
+<summary><b>🔒 Persistent Docker Sandbox & Docker-in-Docker</b></summary>
 
-All code execution (Python, Node.js, Shell scripts) happens inside isolated Docker containers:
-- **Tar Injections:** Avoids volume mounts, pushing scripts into containers via tar streams.
-- **Safety Caps:** Restricts resources to a 256MB memory quota, 50% CPU single-core limit, PID quota of 64, and a 30s hardware timeout constraint.
-- **Auto-Cleanup:** Automatically force-removes the container after every execution step.
+All code execution (Python, Node.js, Shell scripts) happens inside a persistent, secure Docker sandbox container:
+- **In-Memory Tar Streams:** Pushes scripts and assets into the sandbox via tar stream archives to avoid local file volume mount issues.
+- **Persistent Runtimes:** The container remains running during the session to preserve installed packages (e.g. if the agent runs `pip install pandas` in step 1, it remains available in subsequent steps).
+- **Docker-in-Docker:** Mounts the host's `/var/run/docker.sock` to allow the agent to run and manage its own nested Docker containers for complex multi-container workflows.
+- **Resource Constraints:** Enforces a 512MB RAM cap, 80% CPU limit, and a PID limit of 128 to prevent runaway processes.
 </details>
 
 <details>
@@ -126,10 +127,16 @@ POSTGRES_PASSWORD=postgres
 ```
 
 ### 3. Install Dependencies
-OpenManus is structured as a pnpm monorepo workspace. Run the install command at the root to set up dependencies for both the backend and frontend:
+OpenManus is structured as a pnpm monorepo workspace. Running install at the root handles both backend and frontend automatically:
 ```bash
-# Installs both backend & frontend package dependencies
+# Option A: Automatic installation of all dependencies (root & frontend)
 pnpm install
+```
+Alternatively, you can install them separately if needed:
+```bash
+# Option B: Separate installations
+pnpm install                     # Install backend/root dependencies
+pnpm --filter frontend install   # Install frontend dependencies
 ```
 
 ### 4. Install Browser Binary
