@@ -7,87 +7,86 @@
 [![React](https://img.shields.io/badge/React-18%2F19-cyan.svg)](https://react.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.0-blueviolet.svg)](https://tailwindcss.com/)
 
-An autonomous "action engine" clone of Manus AI. It reasons, writes code, runs scripts inside a secure Docker sandbox, and browses the web — with a **fully interactive remote control browser stream** letting you monitor and take control of the browser session in real time.
+An autonomous "action engine" clone of Manus AI. It reasons, writes code, executes tasks in a secure Docker sandbox, and browses the web — with a **fully interactive remote control browser stream** letting you monitor and guide browser sessions in real time.
 
 ---
 
-## 📸 Screenshots
+## 📽️ Demo & Screenshots
 
-### 1. Generative UI Interactive Booking Widget
-![Interactive booking form](./genui_form.png)
+*(Insert GIF demonstrating live browser control, terminal execution, and settings toggling here)*
 
-### 2. Live Agent Session with Browser Remote Control Stream
-![Browser remote control](./genui_screenshot.png)
+<!-- GIF PLACEHOLDER -->
+```
+[DEMO GIF PLACEHOLDER]
+```
 
 ---
 
-## 🌟 Key Capabilities
+## 🌟 Capabilities & Features
 
-### 🌐 1. Live Interactive Browser Remote Control
-- **WebSocket Streaming:** JPEGs are captured from Puppeteer/Chromium, packed with frame-latency headers, and streamed to the frontend over binary WebSocket packets.
-- **Client Backpressure Handling:** Frame drops occur instantly if the user's connection lags, keeping latency under **~150ms** (zero frame queuing).
-- **Remote Control Input:** Click and scroll coordinate events map back to the Puppeteer tab, letting you directly guide or take over browser sessions.
+Select any section below to learn how it works under the hood:
 
-### 🎭 2. 3 Specialized Agent Roles
-Choose the best persona for the job in the chat selector:
+<details>
+<summary><b>🎭 3 Specialized Agent Roles</b></summary>
+
+You can select between three specialized personas directly in the chat panel to optimize execution:
 - **`OpenManus` (Autonomous Orchestrator):** The default general-purpose planner that handles standard tasks, tool selection, and reasoning.
 - **`CoderAgent` (Software Developer):** Focuses on code generation, script execution, environment resolution, and math/data tasks inside the Docker sandbox.
 - **`BrowserAgent` (Web Researcher):** Optimizes search, web browsing, scraping, and remote interaction.
+</details>
 
-### 🔌 3. Multi-Provider AI Settings & Scraper
-- **Ollama:** Run fully locally with local models like `qwen2.5:7b` or `gemma2`.
-- **Groq & OpenAI:** High-speed cloud providers with automated model scraping and pricing detection.
-- **Toggles & Configuration:** Enable/disable providers, customize base URLs, and add secret API keys straight from the Settings UI.
+<details>
+<summary><b>🔒 Safe Isolated Docker Sandbox</b></summary>
 
-### 💾 4. Double-Source Configuration
-- **`.env` Mode:** Reads API keys and variables directly from the local `.env` file (static developer config).
-- **`Database` Mode:** Reads variables from the PostgreSQL `env_settings` table (dynamic user settings).
-- Toggle between them in **Settings → Environments** to update values in real time without restarting the Node server.
-
-### 🔒 5. Ephemeral Docker Sandbox
-- Stage code safely! All code blocks (Python/JS/Shell) run inside isolated Docker containers.
+All code execution (Python, Node.js, Shell scripts) happens inside isolated Docker containers:
 - **Tar Injections:** Avoids volume mounts, pushing scripts into containers via tar streams.
-- **Safety Caps:** 256MB memory quota, 50% CPU single-core limit, PID quota of 64, and a 30s hardware timeout constraint.
+- **Safety Caps:** Restricts resources to a 256MB memory quota, 50% CPU single-core limit, PID quota of 64, and a 30s hardware timeout constraint.
+- **Auto-Cleanup:** Automatically force-removes the container after every execution step.
+</details>
 
-### 🧠 6. Long-Term Consolidated Memory
-- Persistent agent memory backed by PostgreSQL.
-- **Personalized Facts:** Remembers directories, coding habits, or credentials.
-- **LLM Consolidation:** Periodically merges duplicate memories into a compact list to minimize context-window footprints.
+<details>
+<summary><b>💻 Coding, File Creation & Live Hosted URLs</b></summary>
 
-### 📝 7. Context Compacting & AI Summary
+The agent has full read/write access to the workspace directory to build complete projects:
+- **Workspace File Management:** Reads, writes, modifies, and deletes files directly within the local workspace.
+- **Live Local Servers:** The agent can spin up development servers (like React Vite, Express, or Python Flask) inside the environment.
+- **Link Recognition:** If a local server is started, it is automatically exposed on `localhost` and rendered as a live, clickable host URL in the chat and execution panel.
+</details>
+
+<details>
+<summary><b>🛠️ Workflows & Skills Store</b></summary>
+
+OpenManus features a database-backed **Skills Store** that allows the agent to save and reuse complex workflows:
+- **Workflow Distillation:** The agent can bundle a multi-step workflow (such as scraping a site, extracting data, and formatting a report) into a reusable skill.
+- **Interactive Execution:** Call upon saved skills inside chat sessions to perform automated routines.
+</details>
+
+<details>
+<summary><b>🧠 Long-Term Postgres Memory</b></summary>
+
+- **Persistent Facts:** Remembers folders, habits, preferences, or credentials across separate chat sessions.
+- **LLM Consolidation:** Periodically merges duplicate memories into a compact list using LLM consolidation to minimize context-window footprint.
+</details>
+
+<details>
+<summary><b>⚡ Context Compacting & AI Summary</b></summary>
+
 - Configurable **Summarization Threshold** (in characters).
-- Automatically compacts old messages when chat size exceeds the limit, maintaining the agent's core context window.
+- Automatically compacts old messages and logs when chat size exceeds the limit, maintaining the agent's core context window.
+</details>
 
----
+<details>
+<summary><b>📂 Dynamic Right Inspector Panel</b></summary>
 
-## 📁 Project Structure
-
-```
-openmanus/
-├── schema.sql                   # DB Schema & seeded initial skills
-├── docker-compose.yml           # Runs PostgreSQL + pgAdmin
-├── package.json                 # Project dependencies & launch scripts
-├── src/                         # Backend Engine
-│   ├── index.js                 # API server, WS socket, and SSE endpoint
-│   ├── agent.js                 # Core reasoning loops & prompt directives
-│   ├── config.js                # Environment config resolver
-│   ├── db.js                    # PostgreSQL client pools
-│   ├── routes/
-│   │   └── env.js               # REST CRUD for env settings (with key masking)
-│   └── tools/
-│       ├── docker.js            # Docker sandbox runtime
-│       ├── browser.js           # Browser CDP session remote control
-│       └── skills.js            # Skill CRUD
-└── frontend/                    # Vite + React Client
-    ├── src/
-    │   ├── components/
-    │   │   ├── EnvSettings.tsx  # DB config and provider toggle manager
-    │   │   ├── BrowserPanel.tsx # WS remote canvas browser player
-    │   │   └── Sidebar.tsx      # Panel routing & settings tabs
-    │   └── store/
-    │       └── useChatStore.ts  # Zustand global client store
-    └── vite.config.ts
-```
+The Inspector Panel on the right provides tabs for full observability into the agent's work:
+- **Timeline:** Visualization of task steps and agent execution timeline.
+- **Thoughts:** The agent's raw chain-of-thought (thinking blocks) parsed from `<thinking>` tags.
+- **Logs:** Raw logs showing command outputs and terminal execution history.
+- **JSON:** Full session JSON state inspector.
+- **Browser:** Live interactive browser player (CDP stream canvas player).
+- **Files:** Workspace file explorer allowing you to read/inspect files created by the agent in real time.
+- **Prompt:** Inspection of the dynamic System Prompt and injected messages history.
+</details>
 
 ---
 
@@ -102,7 +101,7 @@ Make sure you have these installed:
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Start & Installation
 
 ### 1. Database Setup (Docker Compose)
 Run the pre-configured Postgres database container:
@@ -127,7 +126,9 @@ POSTGRES_PASSWORD=postgres
 ```
 
 ### 3. Install Dependencies
+OpenManus is structured as a pnpm monorepo workspace. Run the install command at the root to set up dependencies for both the backend and frontend:
 ```bash
+# Installs both backend & frontend package dependencies
 pnpm install
 ```
 
@@ -138,45 +139,13 @@ pnpm run browser:install
 ```
 
 ### 5. Launch the Platform
-Start both the Express backend and Vite frontend concurrently in development mode:
+Start both the Express backend and Vite frontend concurrently:
 ```bash
 pnpm run dev:all
 ```
 
-- **Frontend client:** Visit [http://localhost:5173](http://localhost:5173) in your browser.
-- **Backend API:** Exposed at [http://localhost:3000](http://localhost:3000).
-
----
-
-## 🔌 API Reference
-
-### `POST /run`
-Starts an agent session. Returns a Server-Sent Events (SSE) stream of events.
-- **Body:**
-  ```json
-  {
-    "goal": "Write a python script to parse local date and print it.",
-    "agent": "OpenManus",
-    "model": "qwen2.5:7b",
-    "summaryThreshold": 40000,
-    "useMemory": true
-  }
-  ```
-
-### `GET /models`
-Scrapes and returns available models and their active enabled toggles.
-- **Response:**
-  ```json
-  {
-    "ollama": ["qwen2.5:7b", "gemma2"],
-    "openai": [{"id": "gpt-4o", "name": "GPT-4o"}],
-    "groq": [{"id": "llama-3.3-70b-versatile", "name": "Llama 3.3"}],
-    "enabled": { "ollama": true, "groq": false, "openai": false }
-  }
-  ```
-
-### `GET /env/settings` / `PUT /env/settings`
-Read/Write keys stored in the PostgreSQL settings table. Secret fields are automatically masked.
+- **Frontend Client:** Visit [http://localhost:5173](http://localhost:5173).
+- **Backend API:** Running at [http://localhost:3000](http://localhost:3000).
 
 ---
 
