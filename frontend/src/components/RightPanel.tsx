@@ -20,7 +20,7 @@ import ExecutionTimeline from './ExecutionTimeline';
 import JsonViewer from './JsonViewer';
 import MarkdownRenderer from './MarkdownRenderer';
 import BrowserPanel from './BrowserPanel';
-import CodeBlock from './CodeBlock';
+import { VSCodeEditor } from './VSCodeEditor';
 import { api } from '../services/api';
 
 const linkify = (text: string) => {
@@ -61,6 +61,8 @@ export const RightPanel: React.FC = () => {
     isStreaming,
     selectedFile,
     setSelectedFile,
+    activeStreamingFile,
+    activeStreamingCode,
     rightPanelWidth,
     setRightPanelWidth
   } = useChatStore();
@@ -137,41 +139,6 @@ export const RightPanel: React.FC = () => {
       setFileContent('');
     }
   }, [selectedFile, activeSession?.id]);
-
-  const getLanguageFromExtension = (path: string | null) => {
-    if (!path) return 'text';
-    const ext = path.split('.').pop()?.toLowerCase();
-    switch (ext) {
-      case 'js':
-      case 'jsx':
-        return 'javascript';
-      case 'ts':
-      case 'tsx':
-        return 'typescript';
-      case 'py':
-        return 'python';
-      case 'html':
-        return 'html';
-      case 'css':
-        return 'css';
-      case 'json':
-        return 'json';
-      case 'sh':
-      case 'bash':
-        return 'bash';
-      case 'md':
-        return 'markdown';
-      case 'sql':
-        return 'sql';
-      case 'yml':
-      case 'yaml':
-        return 'yaml';
-      case 'dockerfile':
-        return 'dockerfile';
-      default:
-        return 'text';
-    }
-  };
 
   const metrics = useMemo(() => {
     if (!activeSession) return { inputTokens: 0, outputTokens: 0, duration: '0s', stepsCount: 0 };
@@ -430,53 +397,82 @@ export const RightPanel: React.FC = () => {
             {rightPanelTab === 'files' && (
               <div className="h-full flex flex-col text-left">
                 {selectedFile ? (
-                  <div className="flex-1 flex flex-col min-h-0">
-                    <div className="flex items-center gap-2 mb-3">
+                  <div className="flex-1 flex flex-col min-h-0 space-y-2">
+                    <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() => setSelectedFile(null)}
                         className="flex items-center gap-1 text-xs text-slate-400 hover:text-white bg-[#151926] border border-white/[0.08] px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
                       >
                         <ChevronLeft className="w-3.5 h-3.5" />
-                        <span>Files</span>
+                        <span>All Files</span>
                       </button>
                       <span className="text-xs font-mono text-slate-300 truncate max-w-[220px]" title={selectedFile}>
                         {selectedFile}
                       </span>
                     </div>
-                    {isLoadingContent ? (
+
+                    {isLoadingContent && !(activeStreamingFile === selectedFile) ? (
                       <div className="flex-1 flex items-center justify-center py-20">
                         <Loader2 className="w-6 h-6 animate-spin text-indigo-400" />
                       </div>
                     ) : (
-                      <div className="flex-1 overflow-y-auto">
-                        <CodeBlock code={fileContent} language={getLanguageFromExtension(selectedFile)} />
+                      <div className="flex-1 min-h-0">
+                        <VSCodeEditor 
+                          filePath={selectedFile}
+                          code={activeStreamingFile === selectedFile && activeStreamingCode ? activeStreamingCode : fileContent}
+                          isStreaming={activeStreamingFile === selectedFile}
+                        />
                       </div>
                     )}
                   </div>
                 ) : (
                   <div className="flex-1 flex flex-col">
-                    {isLoadingFiles ? (
+                    {isLoadingFiles && files.length === 0 ? (
                       <div className="flex-1 flex items-center justify-center py-20">
                         <Loader2 className="w-6 h-6 animate-spin text-indigo-400" />
                       </div>
-                    ) : files.length === 0 ? (
+                    ) : files.length === 0 && !activeStreamingFile ? (
                       <div className="text-center py-10 text-xs text-slate-500">
                         No sandbox files generated yet.
                       </div>
                     ) : (
                       <div className="space-y-1.5 overflow-y-auto">
+                        {activeStreamingFile && !files.includes(activeStreamingFile) && (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedFile(activeStreamingFile)}
+                            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl border border-indigo-500/40 bg-indigo-500/10 text-left transition-colors cursor-pointer animate-pulse"
+                          >
+                            <FileText className="w-4 h-4 text-indigo-400 shrink-0" />
+                            <span className="text-xs font-mono text-white truncate flex-1 font-semibold">
+                              {activeStreamingFile}
+                            </span>
+                            <span className="text-[10px] font-mono text-indigo-300 bg-indigo-500/20 px-2 py-0.5 rounded">
+                              Writing...
+                            </span>
+                          </button>
+                        )}
                         {files.map((file) => (
                           <button
                             type="button"
                             key={file}
                             onClick={() => setSelectedFile(file)}
-                            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl border border-white/[0.06] hover:border-indigo-500/40 bg-[#121622] hover:bg-[#161B2A] text-left transition-colors cursor-pointer"
+                            className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl border transition-colors cursor-pointer text-left ${
+                              activeStreamingFile === file 
+                                ? 'border-indigo-500/40 bg-indigo-500/10 text-white'
+                                : 'border-white/[0.06] hover:border-indigo-500/40 bg-[#121622] hover:bg-[#161B2A] text-slate-200'
+                            }`}
                           >
                             <FileText className="w-4 h-4 text-indigo-400 shrink-0" />
-                            <span className="text-xs font-mono text-slate-200 truncate flex-1">
+                            <span className="text-xs font-mono truncate flex-1">
                               {file}
                             </span>
+                            {activeStreamingFile === file && (
+                              <span className="text-[10px] font-mono text-indigo-300 bg-indigo-500/20 px-2 py-0.5 rounded animate-pulse">
+                                Live
+                              </span>
+                            )}
                           </button>
                         ))}
                       </div>

@@ -70,6 +70,20 @@ export const formatToolActivity = (tool: string, args: any): string => {
   }
 };
 
+export const extractPartialJsonField = (raw: string, field: string): string => {
+  if (!raw) return '';
+  const regex = new RegExp(`"${field}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)`, 's');
+  const match = raw.match(regex);
+  if (match && match[1]) {
+    try {
+      return JSON.parse(`"${match[1]}"`);
+    } catch {
+      return match[1].replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+    }
+  }
+  return '';
+};
+
 interface ChatState {
   sessions: Partial<Session>[];
   activeSessionId: string | null;
@@ -87,6 +101,9 @@ interface ChatState {
   streamingReasoning: string;
   isSummarizing: boolean;
   lastSummary: string | null;
+  activeStreamingFile: string | null;
+  activeStreamingCode: string;
+  fileContent: string;
   
   // Settings & Navigation
   sidebarCollapsed: boolean;
@@ -133,6 +150,8 @@ interface ChatState {
   toggleRightPanel: () => void;
   setRightPanelTab: (tab: 'timeline' | 'thoughts' | 'logs' | 'json' | 'browser' | 'files' | 'prompt') => void;
   setSelectedFile: (file: string | null) => void;
+  setFileContent: (content: string) => void;
+  setActiveStreamingFile: (file: string | null, code?: string) => void;
   setRightPanelCollapsed: (collapsed: boolean) => void;
   setRightPanelWidth: (width: number) => void;
   setSelectedModel: (model: string) => void;
@@ -266,6 +285,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
   streamingReasoning: '',
   isSummarizing: false,
   lastSummary: null,
+  activeStreamingFile: null,
+  activeStreamingCode: '',
+  fileContent: '',
   
   sidebarCollapsed: localStorage.getItem('openmanus_sidebar_collapsed') === 'true',
   rightPanelCollapsed: localStorage.getItem('openmanus_right_panel_collapsed') === 'true',
@@ -487,11 +509,62 @@ export const useChatStore = create<ChatState>((set, get) => ({
               break;
             }
             case 'clear_stream': {
+              const { preamble } = data;
               set(state => ({ 
-                lastThoughts: state.streamingReasoning || state.streamingContent,
+                lastThoughts: preamble || state.streamingReasoning || state.streamingContent || state.lastThoughts,
                 streamingReasoning: '',
                 streamingContent: '' 
               }));
+              break;
+            }
+            case 'tool_draft': {
+              const { id, tool, rawArguments } = data;
+              const path = extractPartialJsonField(rawArguments, 'path');
+              const content = extractPartialJsonField(rawArguments, 'content');
+              const code = extractPartialJsonField(rawArguments, 'code');
+              const lang = extractPartialJsonField(rawArguments, 'lang');
+
+              const liveArgs: any = {};
+              if (path) liveArgs.path = path;
+              if (content) liveArgs.content = content;
+              if (code) liveArgs.code = code;
+              if (lang) liveArgs.lang = lang;
+
+              set(state => {
+                const updatedTools = {
+                  ...state.activeToolCalls,
+                  [id]: {
+                    id,
+                    name: tool || state.activeToolCalls[id]?.name || 'tool',
+                    args: liveArgs,
+                    status: 'running' as const,
+                    startTime: state.activeToolCalls[id]?.startTime || Date.now()
+                  }
+                };
+
+                const toolName = tool || state.activeToolCalls[id]?.name || '';
+                const activityDesc = formatToolActivity(toolName, liveArgs);
+
+                // Auto-switch to files tab and stream code directly into VS Code Web / Monaco editor!
+                if ((toolName === 'writeFile' || toolName === 'write_file') && path) {
+                  const relPath = path.replace(/^\/?workspace\/?/, '').replace(/^\//, '');
+                  return {
+                    activeToolCalls: updatedTools,
+                    streamingThoughts: activityDesc,
+                    rightPanelTab: 'files' as const,
+                    rightPanelCollapsed: false,
+                    selectedFile: relPath,
+                    activeStreamingFile: relPath,
+                    activeStreamingCode: content,
+                    fileContent: content
+                  };
+                }
+
+                return {
+                  activeToolCalls: updatedTools,
+                  streamingThoughts: activityDesc
+                };
+              });
               break;
             }
             case 'tool_start': {
@@ -505,9 +578,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
                     name: tool,
                     args,
                     status: 'running' as const,
-                    startTime: Date.now()
+                    startTime: state.activeToolCalls[id]?.startTime || Date.now()
                   }
                 };
+
+                let extraState: any = {};
+                if ((tool === 'writeFile' || tool === 'write_file') && args?.path) {
+                  const relPath = args.path.replace(/^\/?workspace\/?/, '').replace(/^\//, '');
+                  extraState = {
+                    rightPanelTab: 'files' as const,
+                    rightPanelCollapsed: false,
+                    selectedFile: relPath,
+                    activeStreamingFile: relPath,
+                    activeStreamingCode: args.content || '',
+                    fileContent: args.content || ''
+                  };
+                } else if (tool === 'browse_web') {
+                  extraState = {
+                    rightPanelTab: 'browser' as const,
+                    rightPanelCollapsed: false
+                  };
+                }
 
                 if (currentSession) {
                   const updatedHistory = [...currentSession.history];
@@ -535,10 +626,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
                     });
                   }
 
-                  const rightPanelState = tool === 'browse_web' 
-                    ? { rightPanelTab: 'browser' as const, rightPanelCollapsed: false } 
-                    : {};
-
                   return {
                     activeToolCalls: updatedTools,
                     streamingThoughts: activityDesc,
@@ -546,18 +633,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
                       ...currentSession,
                       history: updatedHistory
                     },
-                    ...rightPanelState
+                    ...extraState
                   };
                 }
-
-                const rightPanelState = tool === 'browse_web' 
-                  ? { rightPanelTab: 'browser' as const, rightPanelCollapsed: false } 
-                  : {};
 
                 return {
                   activeToolCalls: updatedTools,
                   streamingThoughts: activityDesc,
-                  ...rightPanelState
+                  ...extraState
                 };
               });
               break;
@@ -625,6 +708,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
                   return {
                     activeToolCalls: updatedTools,
+                    activeStreamingFile: null,
                     streamingThoughts: nextThoughts,
                     activeSession: {
                       ...currentSession,
@@ -641,6 +725,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
                 return { 
                   activeToolCalls: updatedTools,
+                  activeStreamingFile: null,
                   streamingThoughts: nextThoughts
                 };
               });
@@ -792,6 +877,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   setSelectedFile: (file) => {
     set({ selectedFile: file });
+  },
+
+  setFileContent: (content: string) => {
+    set({ fileContent: content });
+  },
+
+  setActiveStreamingFile: (file: string | null, code: string = '') => {
+    set({ activeStreamingFile: file, activeStreamingCode: code });
   },
 
   setRightPanelCollapsed: (collapsed) => {

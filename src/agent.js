@@ -1511,12 +1511,21 @@ Before you call any browse_web action (except 'extract_text' or 'screenshot'), y
           for (const tc of delta.tool_calls) {
             const idx = tc.index ?? 0;
             if (!tcAccum[idx]) {
-              tcAccum[idx] = { id: '', type: 'function', function: { name: '', arguments: '' } };
+              tcAccum[idx] = { id: tc.id || `call_${Date.now()}_${idx}`, type: 'function', function: { name: '', arguments: '' } };
             }
             const a = tcAccum[idx];
             if (tc.id)                  a.id                  = tc.id;
             if (tc.function?.name)      a.function.name      += tc.function.name;
             if (tc.function?.arguments) a.function.arguments += tc.function.arguments;
+
+            // Emit live tool draft as tokens arrive so UI immediately shows the active tool & code streaming
+            onEvent('tool_draft', {
+              id: a.id || `call_${idx}`,
+              tool: a.function.name,
+              argumentsDelta: tc.function?.arguments || '',
+              rawArguments: a.function.arguments,
+              index: idx,
+            });
           }
         }
       }
@@ -1534,12 +1543,19 @@ Before you call any browse_web action (except 'extract_text' or 'screenshot'), y
         console.log(`[Agent] Fallback: parsed ${parsedCalls.length} tool call(s) from text content.`);
         toolCalls = parsedCalls.map((call, index) => {
           const fallbackCallId = `call_fb_${Math.random().toString(36).substring(2, 10)}_${index}`;
+          onEvent('tool_draft', {
+            id: fallbackCallId,
+            tool: call.name,
+            argumentsDelta: typeof call.arguments === 'string' ? call.arguments : JSON.stringify(call.arguments),
+            rawArguments: typeof call.arguments === 'string' ? call.arguments : JSON.stringify(call.arguments),
+            index,
+          });
           return {
             id: fallbackCallId,
             type: 'function',
             function: {
               name: call.name,
-              arguments: call.arguments
+              arguments: typeof call.arguments === 'string' ? call.arguments : JSON.stringify(call.arguments)
             }
           };
         });
@@ -1547,10 +1563,9 @@ Before you call any browse_web action (except 'extract_text' or 'screenshot'), y
       }
     }
 
-    // If the model output some text AND then chose a tool, clear the streamed
-    // text from the UI — it was internal reasoning, not the final answer.
+    // If the model output some text AND then chose a tool, preserve that introductory text as thoughts
     if (hasToolCalls && fullContent) {
-      onEvent('clear_stream', {});
+      onEvent('clear_stream', { preamble: fullContent });
     }
 
     // Reconstruct the message object for history
