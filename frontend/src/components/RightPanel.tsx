@@ -404,7 +404,7 @@ export const RightPanel: React.FC = () => {
 
             {rightPanelTab === 'files' && (
               <div className="h-full flex flex-col text-left">
-                {selectedFile ? (
+                {(selectedFile || activeStreamingFile) ? (
                   <div className="flex-1 flex flex-col min-h-0 space-y-2">
                     <div className="flex items-center gap-2">
                       <button
@@ -415,21 +415,21 @@ export const RightPanel: React.FC = () => {
                         <ChevronLeft className="w-3.5 h-3.5" />
                         <span>All Files</span>
                       </button>
-                      <span className="text-xs font-mono text-slate-300 truncate max-w-[220px]" title={selectedFile}>
-                        {selectedFile}
+                      <span className="text-xs font-mono text-slate-300 truncate max-w-[220px]" title={selectedFile || activeStreamingFile || ''}>
+                        {selectedFile || activeStreamingFile}
                       </span>
                     </div>
 
-                    {isLoadingContent && !(activeStreamingFile === selectedFile) ? (
+                    {isLoadingContent && !activeStreamingFile ? (
                       <div className="flex-1 flex items-center justify-center py-20">
                         <Loader2 className="w-6 h-6 animate-spin text-indigo-400" />
                       </div>
                     ) : (
                       <div className="flex-1 min-h-0">
                         <VSCodeEditor 
-                          filePath={selectedFile}
-                          code={activeStreamingFile === selectedFile && activeStreamingCode ? activeStreamingCode : fileContent}
-                          isStreaming={activeStreamingFile === selectedFile}
+                          filePath={selectedFile || activeStreamingFile || 'file'}
+                          code={(activeStreamingFile && activeStreamingCode) ? activeStreamingCode : fileContent}
+                          isStreaming={!!activeStreamingFile}
                         />
                       </div>
                     )}

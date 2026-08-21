@@ -70,6 +70,104 @@ export const formatToolActivity = (tool: string, args: any): string => {
   }
 };
 
+export interface StreamingFileDetails {
+  path: string;
+  content: string;
+  isWritingFile: boolean;
+}
+
+export const extractStreamingFileDetails = (raw: string, toolName: string): StreamingFileDetails => {
+  if (!raw) return { path: '', content: '', isWritingFile: false };
+
+  const isFileTool = 
+    toolName === 'write_file' || 
+    toolName === 'writeFile' || 
+    toolName.includes('write') || 
+    toolName === 'create_file' || 
+    toolName === 'append_file';
+
+  // 1. Try to extract path from known keys: path, file, filename, file_path, target
+  let path = '';
+  const pathKeys = ['path', 'file', 'filename', 'file_path', 'filepath', 'target'];
+  for (const key of pathKeys) {
+    const pRegex = new RegExp(`"${key}"\\s*:\\s*"([^"\\\\]*(?:\\\\.[^"\\\\]*)*)"?`, 'i');
+    const pMatch = raw.match(pRegex);
+    if (pMatch && pMatch[1]) {
+      try {
+        path = JSON.parse(`"${pMatch[1]}"`);
+      } catch {
+        path = pMatch[1];
+      }
+      break;
+    }
+  }
+
+  // 2. Try to extract content from known keys: content, code, text, body
+  let content = '';
+  const contentKeys = ['content', 'code', 'text', 'body'];
+  for (const key of contentKeys) {
+    const searchStr = `"${key}"`;
+    const keyIdx = raw.indexOf(searchStr);
+    if (keyIdx !== -1) {
+      const colonIdx = raw.indexOf(':', keyIdx + searchStr.length);
+      if (colonIdx !== -1) {
+        let valStart = raw.indexOf('"', colonIdx);
+        if (valStart !== -1) {
+          valStart += 1; // skip opening quote
+          const rawChunk = raw.slice(valStart);
+          
+          let clean = '';
+          let escaped = false;
+          for (let i = 0; i < rawChunk.length; i++) {
+            const ch = rawChunk[i];
+            if (escaped) {
+              if (ch === 'n') clean += '\n';
+              else if (ch === 'r') clean += '\r';
+              else if (ch === 't') clean += '\t';
+              else if (ch === '"') clean += '"';
+              else if (ch === '\\') clean += '\\';
+              else if (ch === '/') clean += '/';
+              else clean += ch;
+              escaped = false;
+            } else if (ch === '\\') {
+              escaped = true;
+            } else if (ch === '"') {
+              // Found unescaped quote - check if it's the end of the JSON string
+              const rest = rawChunk.slice(i + 1).trim();
+              if (rest.startsWith(',') || rest.startsWith('}') || rest === '') {
+                break;
+              } else {
+                clean += ch;
+              }
+            } else {
+              clean += ch;
+            }
+          }
+          content = clean;
+          break;
+        }
+      }
+    }
+  }
+
+  // 3. Fallback: If it's a bash command writing a file, e.g. cat << 'EOF' > file.ext
+  if (!isFileTool && (toolName === 'exec_bash' || toolName === 'bash' || toolName === 'run_script')) {
+    const catMatch = raw.match(/cat\s*<<\s*['"]?EOF['"]?\s*>\s*([^\s\n\r]+)\n([\s\S]*?)(?:EOF|$)/i);
+    if (catMatch) {
+      path = catMatch[1].replace(/["']/g, '');
+      content = catMatch[2] || '';
+      return { path: path.replace(/^\/?workspace\/?/, '').replace(/^\//, ''), content, isWritingFile: true };
+    }
+  }
+
+  const cleanPath = path ? path.replace(/^\/?workspace\/?/, '').replace(/^\//, '') : '';
+  return {
+    path: cleanPath,
+    content,
+    isWritingFile: isFileTool || !!cleanPath
+  };
+};
+
 export const extractPartialJsonField = (raw: string, field: string): string => {
   if (!raw) return '';
   const regex = new RegExp(`"${field}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)`, 's');
@@ -335,35 +433,29 @@ const handleStreamEvent = (
     }
     case 'tool_draft': {
       const { id, tool, rawArguments } = data;
-      const path = extractPartialJsonField(rawArguments, 'path');
-      const content = extractPartialJsonField(rawArguments, 'content');
-      const code = extractPartialJsonField(rawArguments, 'code');
-      const lang = extractPartialJsonField(rawArguments, 'lang');
+      const toolName = tool || get().activeToolCalls[id]?.name || '';
+      const fileDetails = extractStreamingFileDetails(rawArguments, toolName);
 
       const liveArgs: any = {};
-      if (path) liveArgs.path = path;
-      if (content) liveArgs.content = content;
-      if (code) liveArgs.code = code;
-      if (lang) liveArgs.lang = lang;
+      if (fileDetails.path) liveArgs.path = fileDetails.path;
+      if (fileDetails.content) liveArgs.content = fileDetails.content;
 
       set(state => {
         const updatedTools = {
           ...state.activeToolCalls,
           [id]: {
             id,
-            name: tool || state.activeToolCalls[id]?.name || 'tool',
+            name: toolName || 'tool',
             args: liveArgs,
             status: 'running' as const,
             startTime: state.activeToolCalls[id]?.startTime || Date.now()
           }
         };
 
-        const toolName = tool || state.activeToolCalls[id]?.name || '';
         const activityDesc = formatToolActivity(toolName, liveArgs);
 
-        // Auto-switch to files tab and stream code directly into VS Code Web / Monaco editor!
-        if ((toolName === 'writeFile' || toolName === 'write_file' || toolName.includes('write')) && path) {
-          const relPath = path.replace(/^\/?workspace\/?/, '').replace(/^\//, '');
+        if (fileDetails.isWritingFile) {
+          const targetFile = fileDetails.path || state.activeStreamingFile || state.selectedFile || 'Untitled';
           localStorage.setItem('openmanus_right_panel_collapsed', 'false');
           const targetWidth = Math.max(state.rightPanelWidth, 520);
           localStorage.setItem('openmanus_right_panel_width', String(targetWidth));
@@ -374,10 +466,10 @@ const handleStreamEvent = (
             rightPanelTab: 'files' as const,
             rightPanelCollapsed: false,
             rightPanelWidth: targetWidth,
-            selectedFile: relPath,
-            activeStreamingFile: relPath,
-            activeStreamingCode: content,
-            fileContent: content
+            selectedFile: targetFile,
+            activeStreamingFile: targetFile,
+            activeStreamingCode: fileDetails.content,
+            fileContent: fileDetails.content
           };
         }
 
@@ -391,6 +483,8 @@ const handleStreamEvent = (
     case 'tool_start': {
       const { id, tool, args } = data;
       const activityDesc = formatToolActivity(tool, args);
+      const isFileWrite = tool === 'write_file' || tool === 'writeFile' || tool.includes('write') || !!args?.path;
+
       set(state => {
         const updatedTools = {
           ...state.activeToolCalls,
@@ -404,8 +498,9 @@ const handleStreamEvent = (
         };
 
         let extraState: any = {};
-        if ((tool === 'writeFile' || tool === 'write_file' || tool.includes('write')) && args?.path) {
-          const relPath = args.path.replace(/^\/?workspace\/?/, '').replace(/^\//, '');
+        if (isFileWrite) {
+          const relPath = args?.path ? args.path.replace(/^\/?workspace\/?/, '').replace(/^\//, '') : (state.selectedFile || 'Untitled');
+          const codeContent = args?.content || state.activeStreamingCode || '';
           localStorage.setItem('openmanus_right_panel_collapsed', 'false');
           const targetWidth = Math.max(state.rightPanelWidth, 520);
           localStorage.setItem('openmanus_right_panel_width', String(targetWidth));
@@ -416,8 +511,8 @@ const handleStreamEvent = (
             rightPanelWidth: targetWidth,
             selectedFile: relPath,
             activeStreamingFile: relPath,
-            activeStreamingCode: args.content || '',
-            fileContent: args.content || ''
+            activeStreamingCode: codeContent,
+            fileContent: codeContent
           };
         } else if (tool === 'browse_web') {
           extraState = {
