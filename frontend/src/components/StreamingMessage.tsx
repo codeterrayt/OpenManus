@@ -58,6 +58,9 @@ export const StreamingMessage: React.FC = () => {
     selectedModel,
     lastThoughts,
     streamingReasoning,
+    setSelectedFile,
+    setRightPanelTab,
+    setRightPanelCollapsed
   } = useChatStore();
 
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -164,7 +167,19 @@ export const StreamingMessage: React.FC = () => {
 
           {/* Live Action Execution Card (when tools like read/write/run/browse are running) */}
           {hasRunningTools && activeRunningTool && (
-            <div className="p-3 rounded-xl border border-indigo-500/30 bg-indigo-500/[0.06] shadow-sm animate-pulse space-y-2">
+            <div 
+              onClick={() => {
+                if (activeRunningTool.args?.path) {
+                  const relPath = activeRunningTool.args.path.replace(/^\/?workspace\/?/, '').replace(/^\//, '');
+                  setSelectedFile(relPath);
+                  setRightPanelTab('files');
+                  setRightPanelCollapsed(false);
+                }
+              }}
+              className={`p-3 rounded-xl border border-indigo-500/30 bg-indigo-500/[0.06] shadow-sm space-y-2 ${
+                activeRunningTool.args?.path ? 'cursor-pointer hover:bg-indigo-500/[0.1] transition-colors' : ''
+              }`}
+            >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className="p-1.5 rounded-lg bg-indigo-500/20 border border-indigo-500/30">
@@ -181,9 +196,28 @@ export const StreamingMessage: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1 text-[11px] font-semibold text-indigo-400 bg-indigo-500/20 border border-indigo-500/40 px-2.5 py-0.5 rounded-full font-mono">
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  <span>Executing</span>
+                <div className="flex items-center gap-2">
+                  {(activeRunningTool.name === 'write_file' || activeRunningTool.name === 'writeFile') && activeRunningTool.args?.path && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const relPath = activeRunningTool.args.path.replace(/^\/?workspace\/?/, '').replace(/^\//, '');
+                        setSelectedFile(relPath);
+                        setRightPanelTab('files');
+                        setRightPanelCollapsed(false);
+                      }}
+                      className="text-[10px] font-semibold text-indigo-300 hover:text-white bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/40 px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer font-mono"
+                    >
+                      <Sparkles className="w-3 h-3 text-indigo-400 animate-spin" />
+                      <span>View Live in VS Code →</span>
+                    </button>
+                  )}
+
+                  <div className="flex items-center gap-1 text-[11px] font-semibold text-indigo-400 bg-indigo-500/20 border border-indigo-500/40 px-2.5 py-0.5 rounded-full font-mono">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    <span>Executing</span>
+                  </div>
                 </div>
               </div>
             </div>

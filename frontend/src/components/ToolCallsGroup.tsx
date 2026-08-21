@@ -206,7 +206,16 @@ export const ToolCallsGroup: React.FC<ToolCallsGroupProps> = ({ toolCalls }) => 
           <button
             type="button"
             key={tc.id}
-            onClick={() => setSelectedId(selectedId === tc.id ? null : tc.id)}
+            onClick={() => {
+              const isFileOp = tc.name === 'write_file' || tc.name === 'writeFile' || tc.name === 'read_file' || tc.name === 'readFile';
+              if (isFileOp && tc.args?.path) {
+                const relPath = tc.args.path.replace(/^\/?workspace\/?/, '').replace(/^\//, '');
+                setSelectedFile(relPath);
+                setRightPanelTab('files');
+                setRightPanelCollapsed(false);
+              }
+              setSelectedId(selectedId === tc.id ? null : tc.id);
+            }}
             className={getBadgeStyle(tc)}
           >
             {getToolIcon(tc.name)}
