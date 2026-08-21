@@ -1,8 +1,21 @@
 // src/components/StreamingMessage.tsx
 import React, { useState, useEffect } from 'react';
-import { BookText, Sparkles, Square, Loader2, Brain } from 'lucide-react';
+import { 
+  BookText, 
+  Sparkles, 
+  Square, 
+  Loader2, 
+  Brain, 
+  Terminal, 
+  Globe, 
+  FileCode2, 
+  FolderGit2, 
+  Settings, 
+  Layers,
+  Clock
+} from 'lucide-react';
 import { GenUIRenderer } from './GenUIRenderer';
-import { useChatStore } from '../store/useChatStore';
+import { useChatStore, formatToolActivity } from '../store/useChatStore';
 import { ToolCallsGroup } from './ToolCallsGroup';
 import { ThinkingBlock } from './ThinkingBlock';
 import MarkdownRenderer from './MarkdownRenderer';
@@ -50,11 +63,14 @@ export const StreamingMessage: React.FC = () => {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   const toolCallsArray = Object.values(activeToolCalls);
-  const hasToolCalls = toolCallsArray.length > 0;
+  const runningToolCalls = toolCallsArray.filter(t => t.status === 'running');
+  const hasRunningTools = runningToolCalls.length > 0;
+  const activeRunningTool = runningToolCalls[0];
 
+  // Timer for LLM thinking & tool execution
   useEffect(() => {
     let interval: any = null;
-    if (isStreaming && !streamingContent && !hasToolCalls) {
+    if (isStreaming) {
       setElapsedSeconds(0);
       interval = setInterval(() => {
         setElapsedSeconds(prev => prev + 1);
@@ -65,39 +81,51 @@ export const StreamingMessage: React.FC = () => {
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isStreaming, !streamingContent, hasToolCalls]);
+  }, [isStreaming]);
 
+  // Clean, honest status when waiting for LLM tokens
   const getLlmStatusText = () => {
-    const isGroq = selectedModel && (
-      selectedModel.startsWith('llama-') ||
-      selectedModel.startsWith('llama3-') ||
-      selectedModel.startsWith('deepseek-') ||
-      selectedModel.startsWith('gemma2-') ||
-      selectedModel.includes('/') ||
-      selectedModel.startsWith('allam-')
-    );
-    const isOpenAI = selectedModel && (
-      selectedModel.startsWith('gpt-') ||
-      selectedModel.startsWith('o1') ||
-      selectedModel.startsWith('o3') ||
-      selectedModel.startsWith('o4')
-    );
+    const modelLabel = selectedModel ? `[${selectedModel}]` : '';
+    if (elapsedSeconds < 4) {
+      return `Analyzing mission request and formulating plan ${modelLabel}... (${elapsedSeconds}s)`;
+    }
+    if (elapsedSeconds < 12) {
+      return `Reasoning and generating tokens ${modelLabel}... (${elapsedSeconds}s)`;
+    }
+    if (elapsedSeconds < 25) {
+      return `Deep reasoning in progress ${modelLabel}... (${elapsedSeconds}s)`;
+    }
+    return `Synthesizing comprehensive response ${modelLabel}... (${elapsedSeconds}s)`;
+  };
 
-    const providerName = isGroq ? 'Groq' : isOpenAI ? 'OpenAI' : 'Ollama / Custom';
-
-    if (elapsedSeconds < 5) {
-      return streamingThoughts || `Formulating execution plan (${providerName})...`;
+  const getToolIcon = (toolName: string) => {
+    switch (toolName) {
+      case 'readFile':
+      case 'read_file':
+      case 'writeFile':
+      case 'write_file':
+      case 'appendFile':
+      case 'append_file':
+      case 'deleteFile':
+      case 'delete_file':
+        return <FileCode2 className="w-4 h-4 text-emerald-400" />;
+      case 'run_code':
+        return <Terminal className="w-4 h-4 text-indigo-400" />;
+      case 'browse_web':
+      case 'inspect_page_html':
+        return <Globe className="w-4 h-4 text-sky-400" />;
+      case 'pull_docker_image':
+      case 'docker':
+      case 'docker_build':
+      case 'docker_compose':
+        return <Layers className="w-4 h-4 text-cyan-400" />;
+      case 'save_skill':
+      case 'get_skill':
+      case 'list_skills':
+        return <FolderGit2 className="w-4 h-4 text-amber-400" />;
+      default:
+        return <Settings className="w-4 h-4 text-slate-400" />;
     }
-    if (isGroq) {
-      return `Groq Rate Limit: Retrying in background (${elapsedSeconds}s)...`;
-    }
-    if (isOpenAI) {
-      return `Waiting for OpenAI response (${elapsedSeconds}s)...`;
-    }
-    if (elapsedSeconds < 15) {
-      return `Loading model weights into memory (${elapsedSeconds}s)...`;
-    }
-    return `Model is thinking and processing (${elapsedSeconds}s)...`;
   };
 
   const thoughtsToDisplay = streamingReasoning 
@@ -127,20 +155,47 @@ export const StreamingMessage: React.FC = () => {
             </div>
             
             {streamingThoughts && (
-              <span className="text-[10px] text-indigo-300 flex items-center gap-1.5 bg-indigo-500/10 px-2.5 py-0.5 border border-indigo-500/20 rounded-full font-mono">
-                <Loader2 className="w-2.5 h-2.5 animate-spin text-indigo-400" />
-                <span>{streamingThoughts}</span>
+              <span className="text-[10px] text-indigo-300 flex items-center gap-1.5 bg-indigo-500/10 px-2.5 py-0.5 border border-indigo-500/20 rounded-full font-mono max-w-[320px] truncate">
+                <Loader2 className="w-2.5 h-2.5 animate-spin text-indigo-400 shrink-0" />
+                <span className="truncate">{streamingThoughts}</span>
               </span>
             )}
           </div>
+
+          {/* Live Action Execution Card (when tools like read/write/run/browse are running) */}
+          {hasRunningTools && activeRunningTool && (
+            <div className="p-3 rounded-xl border border-indigo-500/30 bg-indigo-500/[0.06] shadow-sm animate-pulse space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-indigo-500/20 border border-indigo-500/30">
+                    {getToolIcon(activeRunningTool.name)}
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-white font-mono">
+                      {formatToolActivity(activeRunningTool.name, activeRunningTool.args)}
+                    </div>
+                    <div className="text-[10px] text-indigo-300/80 font-mono mt-0.5 flex items-center gap-1">
+                      <Clock className="w-3 h-3 text-indigo-400" />
+                      <span>In progress • {((Date.now() - activeRunningTool.startTime) / 1000).toFixed(1)}s elapsed</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1 text-[11px] font-semibold text-indigo-400 bg-indigo-500/20 border border-indigo-500/40 px-2.5 py-0.5 rounded-full font-mono">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  <span>Executing</span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Thinking Block */}
           {thoughtsToDisplay && (
             <ThinkingBlock content={thoughtsToDisplay} isLive={true} defaultExpanded={true} />
           )}
 
-          {/* Skeleton loader if awaiting first token */}
-          {!thoughtsToDisplay && !streamingContent && !hasToolCalls && (
+          {/* Waiting for first response tokens (when no tools and no content yet) */}
+          {!thoughtsToDisplay && !streamingContent && !hasRunningTools && (
             <div className="space-y-3 py-2">
               <div className="flex items-center gap-2 text-slate-400">
                 <Brain className="w-4 h-4 text-indigo-400 animate-pulse" />
@@ -198,7 +253,7 @@ export const StreamingMessage: React.FC = () => {
           )}
 
           {/* Live Tool Calls */}
-          {hasToolCalls && (
+          {toolCallsArray.length > 0 && (
             <ToolCallsGroup toolCalls={toolCallsArray} />
           )}
 
@@ -207,7 +262,7 @@ export const StreamingMessage: React.FC = () => {
             <button
               type="button"
               onClick={abortChat}
-              className="flex items-center gap-1.5 text-xs text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 px-3 py-1.5 rounded-lg transition-colors font-semibold active:scale-95"
+              className="flex items-center gap-1.5 text-xs text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 px-3 py-1.5 rounded-lg transition-colors font-semibold active:scale-95 cursor-pointer"
             >
               <Square className="w-3 h-3 fill-rose-400" />
               <span>Stop Agent</span>

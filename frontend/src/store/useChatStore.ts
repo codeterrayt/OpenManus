@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { api } from '../services/api';
 import type { Session, ToolLog } from '../services/api';
 
-interface LiveToolCall {
+export interface LiveToolCall {
   id: string;
   name: string;
   args: any;
@@ -13,6 +13,62 @@ interface LiveToolCall {
   startTime: number;
   duration?: number;
 }
+
+export const formatToolActivity = (tool: string, args: any): string => {
+  if (!args) return `Executing ${tool}...`;
+  switch (tool) {
+    case 'readFile':
+    case 'read_file':
+      return `Reading file: ${args.path || 'file'}`;
+    case 'writeFile':
+    case 'write_file': {
+      const lines = args.content ? args.content.split('\n').length : 0;
+      return `Writing file: ${args.path || 'file'}${lines > 0 ? ` (${lines} lines)` : ''}`;
+    }
+    case 'appendFile':
+    case 'append_file':
+      return `Appending to file: ${args.path || 'file'}`;
+    case 'deleteFile':
+    case 'delete_file':
+      return `Deleting file: ${args.path || 'file'}`;
+    case 'listDir':
+    case 'list_dir':
+      return `Listing directory: ${args.path || '/'}`;
+    case 'makeDir':
+    case 'make_dir':
+      return `Creating directory: ${args.path || ''}`;
+    case 'moveFile':
+    case 'move_file':
+      return `Moving file: ${args.src || ''} → ${args.dest || ''}`;
+    case 'copyFile':
+    case 'copy_file':
+      return `Copying file: ${args.src || ''} → ${args.dest || ''}`;
+    case 'run_code': {
+      const lines = args.code ? args.code.split('\n').length : 0;
+      return `Running ${args.lang || 'code'} in sandbox${lines > 0 ? ` (${lines} lines)` : ''}`;
+    }
+    case 'browse_web':
+      return `Browsing web: ${args.action || 'loading'} ${args.url || ''}`;
+    case 'inspect_page_html':
+      return `Inspecting page DOM for "${args.query || 'elements'}"`;
+    case 'pull_docker_image':
+      return `Pulling Docker image: ${args.image || ''}`;
+    case 'docker':
+      return `Executing Docker command: docker ${args.command || ''}`;
+    case 'docker_build':
+      return `Building Docker image: ${args.tag || ''}`;
+    case 'docker_compose':
+      return `Running docker-compose: ${args.command || 'up'}`;
+    case 'save_skill':
+      return `Saving workflow skill: ${args.name || ''}`;
+    case 'get_skill':
+      return `Loading workflow skill: ${args.name || ''}`;
+    case 'list_skills':
+      return `Fetching saved skills list`;
+    default:
+      return `Running tool "${tool}"...`;
+  }
+};
 
 interface ChatState {
   sessions: Partial<Session>[];
@@ -440,6 +496,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             }
             case 'tool_start': {
               const { id, tool, args } = data;
+              const activityDesc = formatToolActivity(tool, args);
               set(state => {
                 const updatedTools = {
                   ...state.activeToolCalls,
@@ -484,7 +541,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
                   return {
                     activeToolCalls: updatedTools,
-                    streamingThoughts: `Running tool "${tool}"...`,
+                    streamingThoughts: activityDesc,
                     activeSession: {
                       ...currentSession,
                       history: updatedHistory
@@ -499,7 +556,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
                 return {
                   activeToolCalls: updatedTools,
-                  streamingThoughts: `Running tool "${tool}"...`,
+                  streamingThoughts: activityDesc,
                   ...rightPanelState
                 };
               });
@@ -509,6 +566,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
               const { id, tool, result, raw, error } = data;
               const toolCall = get().activeToolCalls[id];
               const duration = toolCall ? Date.now() - toolCall.startTime : 0;
+              const durationSec = (duration / 1000).toFixed(1);
               
               set(state => {
                 // Update live tool call representation
@@ -559,8 +617,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
                   
                   const updatedLogs = [...currentSession.logs, logItem];
 
+                  // Count how many tools are still running
+                  const stillRunning = Object.values(updatedTools).filter(t => t.status === 'running');
+                  const nextThoughts = stillRunning.length > 0 
+                    ? formatToolActivity(stillRunning[0].name, stillRunning[0].args)
+                    : `Completed ${tool} (${durationSec}s)`;
+
                   return {
                     activeToolCalls: updatedTools,
+                    streamingThoughts: nextThoughts,
                     activeSession: {
                       ...currentSession,
                       history: updatedHistory,
@@ -568,7 +633,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
                     }
                   };
                 }
-                return { activeToolCalls: updatedTools };
+
+                const stillRunning = Object.values(updatedTools).filter(t => t.status === 'running');
+                const nextThoughts = stillRunning.length > 0 
+                  ? formatToolActivity(stillRunning[0].name, stillRunning[0].args)
+                  : `Completed ${tool} (${durationSec}s)`;
+
+                return { 
+                  activeToolCalls: updatedTools,
+                  streamingThoughts: nextThoughts
+                };
               });
               break;
             }

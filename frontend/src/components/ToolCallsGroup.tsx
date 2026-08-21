@@ -1,5 +1,5 @@
 // src/components/ToolCallsGroup.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Terminal, 
@@ -12,6 +12,7 @@ import {
   Clock, 
   Eye, 
   FileCode,
+  Layers,
   Copy,
   Check,
   ChevronUp
@@ -64,7 +65,23 @@ interface ToolCallsGroupProps {
 export const ToolCallsGroup: React.FC<ToolCallsGroupProps> = ({ toolCalls }) => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [copiedOutput, setCopiedOutput] = useState(false);
+  const [, setTick] = useState(0);
   const { setSelectedFile, setRightPanelTab, setRightPanelCollapsed } = useChatStore();
+
+  const hasRunning = toolCalls.some(tc => tc.status === 'running');
+
+  // Re-render every 200ms while any tool is running to update elapsed duration in real time
+  useEffect(() => {
+    let interval: any = null;
+    if (hasRunning) {
+      interval = setInterval(() => {
+        setTick(t => t + 1);
+      }, 200);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [hasRunning]);
 
   if (toolCalls.length === 0) return null;
 
@@ -72,21 +89,51 @@ export const ToolCallsGroup: React.FC<ToolCallsGroupProps> = ({ toolCalls }) => 
 
   const getToolIcon = (name: string) => {
     switch (name) {
+      case 'readFile':
+      case 'read_file':
+      case 'writeFile':
+      case 'write_file':
+      case 'appendFile':
+      case 'append_file':
+      case 'deleteFile':
+      case 'delete_file':
+        return <FileCode className="w-3.5 h-3.5 text-emerald-400" />;
       case 'run_code':
         return <Terminal className="w-3.5 h-3.5 text-indigo-400" />;
       case 'browse_web':
       case 'inspect_page_html':
         return <Globe className="w-3.5 h-3.5 text-sky-400" />;
+      case 'pull_docker_image':
+      case 'docker':
+      case 'docker_build':
+      case 'docker_compose':
+        return <Layers className="w-3.5 h-3.5 text-cyan-400" />;
       case 'list_skills':
       case 'get_skill':
       case 'save_skill':
         return <FolderGit2 className="w-3.5 h-3.5 text-amber-400" />;
-      case 'write_file':
-      case 'read_file':
-        return <FileCode className="w-3.5 h-3.5 text-emerald-400" />;
       default:
         return <Settings className="w-3.5 h-3.5 text-slate-400" />;
     }
+  };
+
+  const getActionLabel = (tc: StandardToolCall) => {
+    if (tc.name === 'readFile' || tc.name === 'read_file') {
+      return `read:${tc.args?.path || 'file'}`;
+    }
+    if (tc.name === 'writeFile' || tc.name === 'write_file') {
+      return `write:${tc.args?.path || 'file'}`;
+    }
+    if (tc.name === 'run_code') {
+      return `exec:${tc.args?.lang || 'code'}`;
+    }
+    if (tc.name === 'browse_web') {
+      return `browse:${tc.args?.action || 'web'}`;
+    }
+    if (tc.name === 'pull_docker_image') {
+      return `pull:${tc.args?.image || 'image'}`;
+    }
+    return tc.name;
   };
 
   const getStatusIcon = (status: StandardToolCall['status']) => {
@@ -111,7 +158,7 @@ export const ToolCallsGroup: React.FC<ToolCallsGroupProps> = ({ toolCalls }) => 
     } else {
       switch (tc.status) {
         case 'running':
-          base += "bg-indigo-500/10 border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/20 ";
+          base += "bg-indigo-500/10 border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/20 animate-pulse ";
           break;
         case 'success':
           base += "bg-white/[0.03] border-white/[0.08] text-slate-300 hover:bg-white/[0.06] hover:border-white/[0.15] ";
@@ -163,7 +210,7 @@ export const ToolCallsGroup: React.FC<ToolCallsGroupProps> = ({ toolCalls }) => 
             className={getBadgeStyle(tc)}
           >
             {getToolIcon(tc.name)}
-            <span className="font-semibold">{tc.name}</span>
+            <span className="font-semibold">{getActionLabel(tc)}</span>
             {getStatusIcon(tc.status)}
             {tc.duration !== undefined && (
               <span className="text-[10px] text-slate-500">{(tc.duration / 1000).toFixed(1)}s</span>
@@ -199,15 +246,16 @@ export const ToolCallsGroup: React.FC<ToolCallsGroupProps> = ({ toolCalls }) => 
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {selectedCall.name === 'write_file' && selectedCall.args?.path && (
+                  {(selectedCall.name === 'write_file' || selectedCall.name === 'writeFile') && selectedCall.args?.path && (
                     <button
+                      type="button"
                       onClick={() => {
                         const relPath = selectedCall.args.path.replace(/^\/?workspace\/?/, '').replace(/^\//, '');
                         setSelectedFile(relPath);
                         setRightPanelTab('files');
                         setRightPanelCollapsed(false);
                       }}
-                      className="flex items-center gap-1 text-[11px] font-semibold text-indigo-400 hover:text-white bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 px-2.5 py-1 rounded-lg transition-all"
+                      className="flex items-center gap-1 text-[11px] font-semibold text-indigo-400 hover:text-white bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 px-2.5 py-1 rounded-lg transition-all cursor-pointer"
                     >
                       <Eye className="w-3 h-3" />
                       <span>Inspect File</span>
@@ -216,6 +264,7 @@ export const ToolCallsGroup: React.FC<ToolCallsGroupProps> = ({ toolCalls }) => 
 
                   {getOutputPreview(selectedCall) && (
                     <button
+                      type="button"
                       onClick={() => handleCopyOutput(getOutputPreview(selectedCall))}
                       className="p-1 rounded-lg hover:bg-white/[0.08] text-slate-400 hover:text-white transition-colors"
                       title="Copy output"
@@ -225,6 +274,7 @@ export const ToolCallsGroup: React.FC<ToolCallsGroupProps> = ({ toolCalls }) => 
                   )}
 
                   <button
+                    type="button"
                     onClick={() => setSelectedId(null)}
                     className="p-1 rounded-lg hover:bg-white/[0.08] text-slate-400 hover:text-white transition-colors"
                   >
@@ -250,7 +300,7 @@ export const ToolCallsGroup: React.FC<ToolCallsGroupProps> = ({ toolCalls }) => 
                 <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center justify-between">
                   <span>Terminal / Execution Result</span>
                   {selectedCall.status === 'running' && (
-                    <span className="text-indigo-400 animate-pulse">Running...</span>
+                    <span className="text-indigo-400 animate-pulse">Running in sandbox container...</span>
                   )}
                 </div>
                 <pre className={`p-3 rounded-lg text-xs font-mono overflow-x-auto max-h-56 leading-relaxed border ${
@@ -261,7 +311,7 @@ export const ToolCallsGroup: React.FC<ToolCallsGroupProps> = ({ toolCalls }) => 
                     : 'bg-[#0B0D14] text-emerald-300/90 border-white/[0.06]'
                 }`}>
                   {selectedCall.status === 'running'
-                    ? 'Executing action inside sandbox container... Waiting for output.'
+                    ? 'Executing action in container... Waiting for output.'
                     : (linkify(getOutputPreview(selectedCall)) || 'Completed with no stdout return.')
                   }
                 </pre>

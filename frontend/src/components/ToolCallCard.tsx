@@ -1,5 +1,5 @@
 // src/components/ToolCallCard.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Terminal, 
@@ -14,6 +14,7 @@ import {
   ChevronUp, 
   Eye,
   FileCode,
+  Layers,
   Copy,
   Check
 } from 'lucide-react';
@@ -67,22 +68,47 @@ export const ToolCallCard: React.FC<ToolCallCardProps> = ({
 }) => {
   const [expanded, setExpanded] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [runningElapsed, setRunningElapsed] = useState(0);
   const { setSelectedFile, setRightPanelTab, setRightPanelCollapsed } = useChatStore();
+
+  useEffect(() => {
+    let interval: any = null;
+    if (status === 'running') {
+      const start = Date.now();
+      interval = setInterval(() => {
+        setRunningElapsed((Date.now() - start) / 1000);
+      }, 100);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [status]);
 
   const getToolIcon = () => {
     switch (name) {
+      case 'readFile':
+      case 'read_file':
+      case 'writeFile':
+      case 'write_file':
+      case 'appendFile':
+      case 'append_file':
+      case 'deleteFile':
+      case 'delete_file':
+        return <FileCode className="w-4 h-4 text-emerald-400" />;
       case 'run_code':
         return <Terminal className="w-4 h-4 text-indigo-400" />;
       case 'browse_web':
       case 'inspect_page_html':
         return <Globe className="w-4 h-4 text-sky-400" />;
+      case 'pull_docker_image':
+      case 'docker':
+      case 'docker_build':
+      case 'docker_compose':
+        return <Layers className="w-4 h-4 text-cyan-400" />;
       case 'list_skills':
       case 'get_skill':
       case 'save_skill':
         return <FolderGit2 className="w-4 h-4 text-amber-400" />;
-      case 'write_file':
-      case 'read_file':
-        return <FileCode className="w-4 h-4 text-emerald-400" />;
       default:
         return <Settings className="w-4 h-4 text-slate-400" />;
     }
@@ -90,20 +116,37 @@ export const ToolCallCard: React.FC<ToolCallCardProps> = ({
 
   const getFriendlyName = () => {
     switch (name) {
+      case 'readFile':
+      case 'read_file':
+        return `Read File: ${args?.path || ''}`;
+      case 'writeFile':
+      case 'write_file':
+        return `Write File: ${args?.path || ''}`;
+      case 'appendFile':
+      case 'append_file':
+        return `Append File: ${args?.path || ''}`;
+      case 'deleteFile':
+      case 'delete_file':
+        return `Delete File: ${args?.path || ''}`;
+      case 'listDir':
+      case 'list_dir':
+        return `List Directory: ${args?.path || '/'}`;
       case 'run_code':
-        return 'Sandbox Code Execution';
+        return `Run ${args?.lang || 'Code'} Sandbox`;
       case 'browse_web':
-        return 'Web Automation Browser';
+        return `Web Browser: ${args?.action || 'Navigate'}`;
       case 'inspect_page_html':
-        return 'Inspect DOM Tree';
+        return `Inspect DOM: "${args?.query || ''}"`;
+      case 'pull_docker_image':
+        return `Pull Docker Image: ${args?.image || ''}`;
+      case 'docker':
+        return `Docker CLI: ${args?.command || ''}`;
       case 'list_skills':
         return 'Query Skills Directory';
       case 'get_skill':
-        return `Skill: ${args?.name || ''}`;
+        return `Load Skill: ${args?.name || ''}`;
       case 'save_skill':
         return `Save Skill: ${args?.name || ''}`;
-      case 'write_file':
-        return `Create File: ${args?.path || ''}`;
       default:
         return name;
     }
@@ -113,9 +156,9 @@ export const ToolCallCard: React.FC<ToolCallCardProps> = ({
     switch (status) {
       case 'running':
         return (
-          <span className="flex items-center gap-1 text-[11px] font-semibold text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full">
+          <span className="flex items-center gap-1 text-[11px] font-semibold text-indigo-400 bg-indigo-500/10 border border-indigo-500/30 px-2.5 py-0.5 rounded-full font-mono">
             <Loader2 className="w-3 h-3 animate-spin" />
-            <span>Running</span>
+            <span>Running ({runningElapsed.toFixed(1)}s)</span>
           </span>
         );
       case 'success':
@@ -160,14 +203,24 @@ export const ToolCallCard: React.FC<ToolCallCardProps> = ({
 
   const getParamsSummary = () => {
     if (!args) return '';
+    if (name === 'readFile' || name === 'read_file') {
+      return `Target: ${args.path || ''}`;
+    }
+    if (name === 'writeFile' || name === 'write_file') {
+      const lines = args.content ? args.content.split('\n').length : 0;
+      return `Path: ${args.path || ''} (${lines} lines)`;
+    }
     if (name === 'run_code') {
-      return `${args.lang} (${args.code?.split('\n').length || 0} lines)`;
+      return `${args.lang || 'script'} (${args.code?.split('\n').length || 0} lines)`;
     }
     if (name === 'browse_web') {
       return `${args.action || 'extract_text'} → ${args.url || ''}`;
     }
-    if (name === 'write_file') {
-      return `${args.path || ''}`;
+    if (name === 'pull_docker_image') {
+      return `Image: ${args.image || ''}`;
+    }
+    if (name === 'docker') {
+      return `docker ${args.command || ''}`;
     }
     return JSON.stringify(args);
   };
@@ -218,15 +271,16 @@ export const ToolCallCard: React.FC<ToolCallCardProps> = ({
           )}
           {renderStatus()}
           
-          {status === 'success' && name === 'write_file' && args?.path && (
+          {status === 'success' && (name === 'write_file' || name === 'writeFile') && args?.path && (
             <button
+              type="button"
               onClick={() => {
                 const relPath = args.path.replace(/^\/?workspace\/?/, '').replace(/^\//, '');
                 setSelectedFile(relPath);
                 setRightPanelTab('files');
                 setRightPanelCollapsed(false);
               }}
-              className="flex items-center gap-1 text-[11px] font-semibold text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 px-2.5 py-0.5 rounded-lg transition-all"
+              className="flex items-center gap-1 text-[11px] font-semibold text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 px-2.5 py-0.5 rounded-lg transition-all cursor-pointer"
             >
               <Eye className="w-3 h-3" />
               <span>Inspect</span>
@@ -234,6 +288,7 @@ export const ToolCallCard: React.FC<ToolCallCardProps> = ({
           )}
           
           <button
+            type="button"
             onClick={() => setExpanded(!expanded)}
             className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/[0.08] transition-colors"
           >
@@ -263,11 +318,23 @@ export const ToolCallCard: React.FC<ToolCallCardProps> = ({
                 </div>
               )}
 
+              {(name === 'writeFile' || name === 'write_file') && args?.content && (
+                <div>
+                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    File Contents Written ({args.path})
+                  </div>
+                  <pre className="p-2.5 rounded-lg text-xs font-mono overflow-x-auto bg-[#0F1320] text-slate-200 border border-white/[0.06] max-h-40 select-text">
+                    {args.content}
+                  </pre>
+                </div>
+              )}
+
               {hasOutput && (
                 <div>
                   <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
                     <span>Output Log</span>
                     <button
+                      type="button"
                       onClick={() => handleCopy(getOutputPreview())}
                       className="flex items-center gap-1 text-slate-400 hover:text-white text-[10px] font-normal"
                     >
@@ -283,7 +350,7 @@ export const ToolCallCard: React.FC<ToolCallCardProps> = ({
                       : 'bg-[#0E121B] text-emerald-300/90 border-white/[0.06]'
                   }`}>
                     {status === 'running' 
-                      ? 'Running script in sandbox...' 
+                      ? 'Executing action in container... Waiting for output.' 
                       : linkify(getOutputPreview()) || 'Done.'}
                   </pre>
                 </div>
