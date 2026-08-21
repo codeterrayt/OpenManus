@@ -1331,8 +1331,19 @@ Before you call any browse_web action (except 'extract_text' or 'screenshot'), y
 
 
 
+  const customProviders = activeConfig.customProviders || [];
+  const matchingCustom = customProviders.find(p => Array.isArray(p.models) && p.models.includes(resolvedModel));
+
   let llmClient;
-  if (isOpenAI) {
+  let providerLabel = 'Ollama';
+  if (matchingCustom) {
+    providerLabel = matchingCustom.name || 'Custom';
+    llmClient = new OpenAI({
+      baseURL: matchingCustom.baseURL,
+      apiKey:  matchingCustom.apiKey || 'custom',
+    });
+  } else if (isOpenAI) {
+    providerLabel = 'OpenAI';
     const openaiKey = activeConfig.openai?.apiKey || process.env.OPENAI_API_KEY || '';
     const openaiURL = activeConfig.openai?.baseURL;
     llmClient = new OpenAI({
@@ -1340,18 +1351,20 @@ Before you call any browse_web action (except 'extract_text' or 'screenshot'), y
       ...(openaiURL && openaiURL !== 'https://api.openai.com/v1' ? { baseURL: openaiURL } : {}),
     });
   } else if (isGroq) {
+    providerLabel = 'Groq';
     llmClient = new OpenAI({
       baseURL: activeConfig.groq?.baseURL || 'https://api.groq.com/openai/v1',
       apiKey:  groqApiKey,
     });
   } else {
+    providerLabel = 'Ollama';
     llmClient = new OpenAI({
       baseURL: activeConfig.ollama.baseURL,
       apiKey:  activeConfig.ollama.apiKey,
     });
   }
 
-  console.log(`[Agent] Route LLM | model=${resolvedModel} (mapped to ${targetModelName}) provider=${isOpenAI ? 'OpenAI' : isGroq ? 'Groq' : 'Ollama'}`);
+  console.log(`[Agent] Route LLM | model=${resolvedModel} (mapped to ${targetModelName}) provider=${providerLabel}`);
 
   try {
     const activeBrowser = await getActiveBrowserState().catch(() => null);

@@ -46,6 +46,7 @@ interface ChatState {
     ollama: string[];
     openai: Array<{ id: string; name: string; pricing: string; inputPrice: string; outputPrice: string }>;
     groq: Array<{ id: string; name: string; pricing: string; limits?: string; inputPrice?: string; outputPrice?: string }>;
+    custom?: Array<{ id: string; name: string; baseURL?: string; models: string[]; enabled: boolean }>;
     enabled?: { ollama: boolean; groq: boolean; openai: boolean };
   };
 
@@ -219,7 +220,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   selectedAgent: 'OpenManus',
   searchQuery: '',
   summaryThreshold: Number(localStorage.getItem('openmanus_summary_threshold')) || 40000,
-  models: { ollama: [], openai: [], groq: [] },
+  models: { ollama: [], openai: [], groq: [], custom: [] },
   useMemory: localStorage.getItem('openmanus_use_memory') !== 'false',
 
   browserUrl: null,
@@ -252,6 +253,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         ...(data.ollama || []),
         ...(data.openai || []).map((m: {id: string}) => m.id),
         ...(data.groq   || []).map((m: {id: string}) => m.id),
+        ...(data.custom || []).flatMap((c: {models: string[]}) => c.models || []),
       ];
 
       // Get default model from backend config via health check

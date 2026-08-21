@@ -11,6 +11,7 @@ import { Router } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import OpenAI from 'openai';
 import { getEnvSettings, setEnvSetting, query } from '../db.js';
 
 const router = Router();
@@ -105,6 +106,54 @@ router.get('/dotenv', (_req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// POST /env/test-provider  body: { baseURL, apiKey }
+router.post('/test-provider', async (req, res) => {
+  const { baseURL, apiKey } = req.body ?? {};
+  if (!baseURL) {
+    return res.status(400).json({ error: 'baseURL is required' });
+  }
+
+  let models = [];
+  let errorMsg = null;
+
+  // 1. Try standard OpenAI-compatible endpoint
+  try {
+    const client = new OpenAI({ baseURL, apiKey: apiKey || 'dummy-key' });
+    const list = await client.models.list();
+    if (list && Array.isArray(list.data)) {
+      models = list.data.map(m => m.id).filter(Boolean);
+    }
+  } catch (err) {
+    errorMsg = err.message;
+  }
+
+  // 2. If OpenAI client failed, check if it's an Ollama endpoint (e.g. without /v1 or with /api/tags)
+  if (models.length === 0) {
+    try {
+      const cleanHost = baseURL.replace(/\/v1\/?$/, '').replace(/\/+$/, '');
+      const tagsRes = await fetch(`${cleanHost}/api/tags`);
+      if (tagsRes.ok) {
+        const data = await tagsRes.json();
+        if (data && Array.isArray(data.models)) {
+          models = data.models.map(m => m.name || m.model).filter(Boolean);
+          errorMsg = null;
+        }
+      }
+    } catch {
+      // ignore secondary fallback error
+    }
+  }
+
+  if (models.length > 0) {
+    return res.json({ success: true, models });
+  }
+
+  res.status(400).json({
+    success: false,
+    error: errorMsg || 'No models found or endpoint is unreachable',
+  });
 });
 
 export default router;

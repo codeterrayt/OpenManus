@@ -289,6 +289,17 @@ export const ChatInput: React.FC = () => {
                       ))}
                     </optgroup>
                   )}
+                  {models.custom && models.custom.map(provider => (
+                    provider.enabled && provider.models && provider.models.length > 0 ? (
+                      <optgroup key={provider.id} label={`${provider.name} (Custom)`} className="bg-bg-secondary text-text-muted font-normal">
+                        {provider.models.map(opt => (
+                          <option key={opt} value={opt} className="bg-bg-secondary text-text-main">
+                            {opt}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ) : null
+                  ))}
                 </select>
               </div>
 

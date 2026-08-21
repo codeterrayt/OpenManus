@@ -69,13 +69,28 @@ export async function resolveConfig(getEnvSettingsFn) {
     const groqEnabled   = settings['GROQ_ENABLED']   === 'true';
     const openaiEnabled = settings['OPENAI_ENABLED'] === 'true';
 
+    let customProviders = [];
+    try {
+      if (settings['CUSTOM_PROVIDERS']) {
+        const parsed = typeof settings['CUSTOM_PROVIDERS'] === 'string'
+          ? JSON.parse(settings['CUSTOM_PROVIDERS'])
+          : settings['CUSTOM_PROVIDERS'];
+        if (Array.isArray(parsed)) {
+          customProviders = parsed;
+        }
+      }
+    } catch (e) {
+      console.warn('[Config] Failed to parse CUSTOM_PROVIDERS:', e.message);
+    }
+
     if (source !== 'db') {
-      // .env mode — use static config but overlay the database enabled flags
+      // .env mode — use static config but overlay the database enabled flags & custom providers
       return {
         ...config,
         ollama: { ...config.ollama, enabled: ollamaEnabled },
         groq:   { ...config.groq,   enabled: groqEnabled },
         openai: { ...config.openai, enabled: openaiEnabled },
+        customProviders,
       };
     }
 
@@ -107,10 +122,11 @@ export async function resolveConfig(getEnvSettingsFn) {
         baseURL: g('OPENAI_BASE_URL', config.openai.baseURL),
         enabled: openaiEnabled,
       },
+      customProviders,
     };
   } catch (err) {
     console.warn('[Config] resolveConfig failed, falling back to .env:', err.message);
-    return config;
+    return { ...config, customProviders: [] };
   }
 }
 

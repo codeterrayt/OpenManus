@@ -66,16 +66,34 @@ export const api = {
   },
 
   /**
-   * Retrieve list of available models (Ollama + OpenAI with pricing)
+   * Retrieve list of available models (Ollama + OpenAI with pricing + Custom providers)
    */
   async getModels(): Promise<{
     ollama: string[];
     openai: Array<{ id: string; name: string; pricing: string; inputPrice: string; outputPrice: string }>;
     groq: Array<{ id: string; name: string; pricing: string; limits?: string; inputPrice?: string; outputPrice?: string }>;
+    custom?: Array<{ id: string; name: string; baseURL?: string; models: string[]; enabled: boolean }>;
+    enabled?: { ollama: boolean; groq: boolean; openai: boolean };
   }> {
     const res = await fetch(`${API_BASE_URL}/models`);
     if (!res.ok) throw new Error('Failed to fetch models');
     return res.json();
+  },
+
+  /**
+   * Test custom AI provider connection and discover its models
+   */
+  async testProvider(baseURL: string, apiKey: string = ''): Promise<{ success: boolean; models: string[]; error?: string }> {
+    const res = await fetch(`${API_BASE_URL}/env/test-provider`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ baseURL, apiKey }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to connect to provider');
+    }
+    return data;
   },
 
   /**

@@ -84,9 +84,29 @@ app.get('/models', async (_req, res) => {
     try {
       const ollamaClient = new OpenAI({ baseURL: ollamaBaseURL, apiKey: 'ollama' });
       const modelsList   = await ollamaClient.models.list();
-      ollamaModels = modelsList.data.map(m => m.id);
+      if (modelsList && Array.isArray(modelsList.data) && modelsList.data.length > 0) {
+        ollamaModels = modelsList.data.map(m => m.id);
+      }
     } catch (err) {
-      console.error('[API] Failed to fetch models from Ollama:', err.message);
+      console.warn('[API] OpenAI SDK list models failed for Ollama, trying /api/tags fallback:', err.message);
+    }
+
+    if (ollamaModels.length === 0) {
+      try {
+        const cleanHost = ollamaBaseURL.replace(/\/v1\/?$/, '').replace(/\/+$/, '');
+        const tagsRes = await fetch(`${cleanHost}/api/tags`);
+        if (tagsRes.ok) {
+          const data = await tagsRes.json();
+          if (data && Array.isArray(data.models)) {
+            ollamaModels = data.models.map(m => m.name || m.model).filter(Boolean);
+          }
+        }
+      } catch (err) {
+        console.warn('[API] Ollama /api/tags fallback failed:', err.message);
+      }
+    }
+
+    if (ollamaModels.length === 0) {
       const fallbackModel = useDbSource ? (settings['OLLAMA_MODEL'] || config.ollama.model) : config.ollama.model;
       ollamaModels = [fallbackModel];
     }
@@ -127,10 +147,65 @@ app.get('/models', async (_req, res) => {
   // ── OpenAI models ──────────────────────────────────────────────────────────
   const openaiModels = openaiEnabled ? OPENAI_MODELS : [];
 
+  // ── Custom Providers models ───────────────────────────────────────────────
+  let customProviders = [];
+  try {
+    if (settings['CUSTOM_PROVIDERS']) {
+      const parsed = typeof settings['CUSTOM_PROVIDERS'] === 'string'
+        ? JSON.parse(settings['CUSTOM_PROVIDERS'])
+        : settings['CUSTOM_PROVIDERS'];
+      if (Array.isArray(parsed)) {
+        customProviders = parsed;
+      }
+    }
+  } catch (err) {
+    console.warn('[API] Failed to parse custom providers for /models:', err.message);
+  }
+
+  const customProvidersResult = [];
+  for (const provider of customProviders) {
+    if (provider.enabled === false) continue;
+    let providerModels = Array.isArray(provider.models) ? [...provider.models] : [];
+
+    // If models array is empty and baseURL is provided, try to discover models
+    if (providerModels.length === 0 && provider.baseURL) {
+      try {
+        const client = new OpenAI({ baseURL: provider.baseURL, apiKey: provider.apiKey || 'dummy-key' });
+        const list = await client.models.list();
+        if (list && Array.isArray(list.data) && list.data.length > 0) {
+          providerModels = list.data.map(m => m.id).filter(Boolean);
+        }
+      } catch {
+        // try ollama /api/tags fallback
+        try {
+          const cleanHost = provider.baseURL.replace(/\/v1\/?$/, '').replace(/\/+$/, '');
+          const tagsRes = await fetch(`${cleanHost}/api/tags`);
+          if (tagsRes.ok) {
+            const data = await tagsRes.json();
+            if (data && Array.isArray(data.models)) {
+              providerModels = data.models.map(m => m.name || m.model).filter(Boolean);
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    customProvidersResult.push({
+      id: provider.id || `custom_${Date.now()}`,
+      name: provider.name || 'Custom Provider',
+      baseURL: provider.baseURL,
+      models: providerModels,
+      enabled: provider.enabled !== false,
+    });
+  }
+
   res.json({
     ollama:  ollamaModels,
     openai:  openaiModels,
     groq:    groqModels,
+    custom:  customProvidersResult,
     // Tell the frontend which providers are enabled so it can show/hide sections
     enabled: { ollama: ollamaEnabled, groq: groqEnabled, openai: openaiEnabled },
   });
@@ -183,14 +258,26 @@ app.post('/run', async (req, res) => {
   try {
     const settings = await getEnvSettings();
     if (model) {
-      const isGroqModel   = model.startsWith('llama-') || model.startsWith('deepseek-') || model.startsWith('gemma2-') || model.includes('groq/');
+      const isGroqModel   = model.startsWith('llama-') || model.startsWith('llama3-') || model.startsWith('deepseek-') || model.startsWith('gemma2-') || model.includes('groq/') || model.startsWith('allam-');
       const isOpenAIModel = model.startsWith('gpt-') || model.startsWith('o1') || model.startsWith('o3') || model.startsWith('o4');
-      const isOllamaModel = !isGroqModel && !isOpenAIModel;
+
+      let customProviders = [];
+      try {
+        if (settings['CUSTOM_PROVIDERS']) {
+          const parsed = typeof settings['CUSTOM_PROVIDERS'] === 'string' ? JSON.parse(settings['CUSTOM_PROVIDERS']) : settings['CUSTOM_PROVIDERS'];
+          if (Array.isArray(parsed)) customProviders = parsed;
+        }
+      } catch {}
+
+      const matchingCustom = customProviders.find(p => Array.isArray(p.models) && p.models.includes(model));
+      const isCustomModel = !!matchingCustom;
+      const isOllamaModel = !isGroqModel && !isOpenAIModel && !isCustomModel;
 
       const ollamaEnabled = settings['OLLAMA_ENABLED'] !== 'false';
       const groqEnabled   = settings['GROQ_ENABLED']   === 'true';
       const openaiEnabled = settings['OPENAI_ENABLED'] === 'true';
 
+      if (isCustomModel && matchingCustom.enabled === false) return res.status(403).json({ error: `Provider "${matchingCustom.name}" is disabled in Environment Settings. Enable it to use this model.` });
       if (isGroqModel   && !groqEnabled)   return res.status(403).json({ error: 'Groq is disabled in Environment Settings. Enable it to use Groq models.' });
       if (isOpenAIModel && !openaiEnabled) return res.status(403).json({ error: 'OpenAI is disabled in Environment Settings. Enable it to use OpenAI models.' });
       if (isOllamaModel && !ollamaEnabled) return res.status(403).json({ error: 'Ollama is disabled in Environment Settings. Enable it to use local models.' });
@@ -251,14 +338,27 @@ app.get('/memories', async (_req, res) => {
 app.post('/memories/summarize', async (req, res) => {
   const { model } = req.body ?? {};
   try {
-    const isOpenAI = model && (
-      model.startsWith('gpt-') ||
-      model.startsWith('o1') ||
-      model.startsWith('o3') ||
-      model.startsWith('o4')
+    const liveConfig = await resolveConfig(getEnvSettings);
+    const resolvedModel = model ?? liveConfig.ollama.model;
+
+    const isOpenAI = resolvedModel && (
+      resolvedModel.startsWith('gpt-') ||
+      resolvedModel.startsWith('o1') ||
+      resolvedModel.startsWith('o3') ||
+      resolvedModel.startsWith('o4')
     );
-    const resolvedModel = model ?? config.ollama.model;
-    
+    const isGroq = resolvedModel && (
+      resolvedModel.startsWith('llama-') ||
+      resolvedModel.startsWith('llama3-') ||
+      resolvedModel.startsWith('deepseek-') ||
+      resolvedModel.startsWith('gemma2-') ||
+      resolvedModel.startsWith('groq/') ||
+      resolvedModel.includes('/') ||
+      resolvedModel.startsWith('allam-')
+    );
+
+    const matchingCustom = (liveConfig.customProviders || []).find(p => Array.isArray(p.models) && p.models.includes(resolvedModel));
+
     const OPENAI_MODEL_MAPPING = {
       'gpt-5.5-pro': 'gpt-4o',
       'gpt-5.5-flagship': 'gpt-4o',
@@ -275,9 +375,28 @@ app.post('/memories/summarize', async (req, res) => {
     
     const targetModelName = isOpenAI ? (OPENAI_MODEL_MAPPING[resolvedModel] ?? resolvedModel) : resolvedModel;
 
-    const llmClient = isOpenAI
-      ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-      : new OpenAI({ baseURL: config.ollama.baseURL, apiKey: config.ollama.apiKey });
+    let llmClient;
+    if (matchingCustom) {
+      llmClient = new OpenAI({
+        baseURL: matchingCustom.baseURL,
+        apiKey: matchingCustom.apiKey || 'custom',
+      });
+    } else if (isOpenAI) {
+      llmClient = new OpenAI({
+        apiKey: liveConfig.openai?.apiKey || process.env.OPENAI_API_KEY || '',
+        baseURL: liveConfig.openai?.baseURL || 'https://api.openai.com/v1',
+      });
+    } else if (isGroq) {
+      llmClient = new OpenAI({
+        baseURL: liveConfig.groq?.baseURL || 'https://api.groq.com/openai/v1',
+        apiKey: liveConfig.groq?.apiKey || process.env.GROQ_API_KEY || '',
+      });
+    } else {
+      llmClient = new OpenAI({
+        baseURL: liveConfig.ollama.baseURL,
+        apiKey: liveConfig.ollama.apiKey,
+      });
+    }
 
     const { rows: memories } = await getPool().query('SELECT * FROM memories ORDER BY created_at DESC');
     if (memories.length === 0) {

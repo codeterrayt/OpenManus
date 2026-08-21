@@ -1,17 +1,18 @@
 // src/components/EnvSettings.tsx
-// Environment Settings panel — manage API keys, provider URLs, and toggles
-// stored in the PostgreSQL env_settings table.
+// Environment Settings panel — manage API keys, provider URLs, toggles,
+// and custom AI providers stored in the PostgreSQL env_settings table.
 
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   Save, RefreshCw, Eye, EyeOff, CheckCircle2, AlertCircle,
   Cpu, Cloud, Zap, SlidersHorizontal, ChevronDown, ChevronUp,
   Database, FileText, Loader2, ToggleLeft, ToggleRight,
+  Plus, Trash2, Globe, Sparkles,
 } from 'lucide-react';
 import { useChatStore } from '../store/useChatStore';
+import { api } from '../services/api';
 
 const API = 'http://localhost:3000';
-
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -21,6 +22,15 @@ interface EnvEntry {
   rawValue: string;    // actual value for inputs
   masked: boolean;
   updated_at: string;
+}
+
+export interface CustomProvider {
+  id: string;
+  name: string;
+  baseURL: string;
+  apiKey: string;
+  models: string[];
+  enabled: boolean;
 }
 
 interface ProviderSection {
@@ -45,18 +55,18 @@ interface FieldDef {
 const PROVIDERS: ProviderSection[] = [
   {
     id: 'ollama',
-    label: 'Ollama',
+    label: 'Ollama (Local)',
     icon: <Cpu className="w-4 h-4" />,
     color: 'text-blue-400',
     enabledKey: 'OLLAMA_ENABLED',
     fields: [
-      { key: 'OLLAMA_BASE_URL', label: 'Base URL', type: 'url', placeholder: 'http://localhost:11434/v1', hint: 'OpenAI-compatible endpoint' },
+      { key: 'OLLAMA_BASE_URL', label: 'Base URL', type: 'url', placeholder: 'http://localhost:11434/v1', hint: 'OpenAI-compatible local endpoint' },
       { key: 'OLLAMA_MODEL',    label: 'Default Model', type: 'text', placeholder: 'qwen2.5:7b' },
     ],
   },
   {
     id: 'groq',
-    label: 'Groq',
+    label: 'Groq (Cloud)',
     icon: <Zap className="w-4 h-4" />,
     color: 'text-orange-400',
     enabledKey: 'GROQ_ENABLED',
@@ -67,7 +77,7 @@ const PROVIDERS: ProviderSection[] = [
   },
   {
     id: 'openai',
-    label: 'OpenAI',
+    label: 'OpenAI (Cloud)',
     icon: <Cloud className="w-4 h-4" />,
     color: 'text-emerald-400',
     enabledKey: 'OPENAI_ENABLED',
@@ -128,7 +138,7 @@ const SecretInput: React.FC<{
   );
 };
 
-// ── Provider Card ─────────────────────────────────────────────────────────────
+// ── Standard Provider Card ─────────────────────────────────────────────────────
 
 const ProviderCard: React.FC<{
   provider: ProviderSection;
@@ -192,19 +202,161 @@ const ProviderCard: React.FC<{
   );
 };
 
+// ── Custom Provider Card ───────────────────────────────────────────────────────
+
+const CustomProviderCard: React.FC<{
+  provider: CustomProvider;
+  onUpdate: (updated: CustomProvider) => void;
+  onDelete: () => void;
+  onToast: (ok: boolean, msg: string) => void;
+}> = ({ provider, onUpdate, onDelete, onToast }) => {
+  const [open, setOpen] = useState(true);
+  const [fetching, setFetching] = useState(false);
+  const [modelsInput, setModelsInput] = useState(provider.models.join(', '));
+
+  const handleFetchModels = async () => {
+    if (!provider.baseURL) {
+      onToast(false, 'Please enter a Base URL first');
+      return;
+    }
+    setFetching(true);
+    try {
+      const data = await api.testProvider(provider.baseURL, provider.apiKey);
+      if (data.models && data.models.length > 0) {
+        onUpdate({ ...provider, models: data.models });
+        setModelsInput(data.models.join(', '));
+        onToast(true, `Discovered ${data.models.length} models from ${provider.name || 'custom provider'}!`);
+      } else {
+        onToast(false, 'Connected, but no models found at this endpoint');
+      }
+    } catch (err: any) {
+      onToast(false, err.message || 'Failed to fetch models from endpoint');
+    } finally {
+      setFetching(false);
+    }
+  };
+
+  const handleModelsChange = (raw: string) => {
+    setModelsInput(raw);
+    const parsed = raw.split(',').map(m => m.trim()).filter(Boolean);
+    onUpdate({ ...provider, models: parsed });
+  };
+
+  return (
+    <div className={`border rounded-xl overflow-hidden transition-all ${
+      provider.enabled ? 'border-border-dark/60 bg-card/10' : 'border-border-dark/30 bg-card/5 opacity-60'
+    }`}>
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-border-dark/30 bg-[#0F172A]/50">
+        <Globe className="w-4 h-4 text-purple-400" />
+        <span className="text-sm font-bold text-text-main flex-1 truncate">
+          {provider.name || 'Custom Provider'}
+        </span>
+        <ToggleSwitch
+          checked={provider.enabled}
+          onChange={v => onUpdate({ ...provider, enabled: v })}
+        />
+        <button
+          onClick={onDelete}
+          title="Delete custom provider"
+          className="text-text-muted/50 hover:text-rose-400 p-1 transition-colors ml-1"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
+        <button
+          onClick={() => setOpen(o => !o)}
+          className="text-text-muted/50 hover:text-text-muted transition-colors ml-1"
+        >
+          {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        </button>
+      </div>
+
+      {/* Fields */}
+      {open && (
+        <div className="p-4 space-y-3.5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold text-text-muted uppercase tracking-wider">
+                Provider Name
+              </label>
+              <input
+                type="text"
+                value={provider.name}
+                onChange={e => onUpdate({ ...provider, name: e.target.value })}
+                placeholder="e.g. Sol Terra Luna, OpenRouter, vLLM"
+                className={inputCls}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold text-text-muted uppercase tracking-wider">
+                Base URL
+              </label>
+              <input
+                type="url"
+                value={provider.baseURL}
+                onChange={e => onUpdate({ ...provider, baseURL: e.target.value })}
+                placeholder="http://localhost:11434/v1 or https://api.deepseek.com/v1"
+                className={inputCls}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[11px] font-semibold text-text-muted uppercase tracking-wider">
+              API Key (Optional for local servers)
+            </label>
+            <SecretInput
+              value={provider.apiKey}
+              onChange={v => onUpdate({ ...provider, apiKey: v })}
+              placeholder="sk-… (leave empty for local models)"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-semibold text-text-muted uppercase tracking-wider">
+                Available Models (comma-separated)
+              </label>
+              <button
+                type="button"
+                onClick={handleFetchModels}
+                disabled={fetching}
+                className="flex items-center gap-1 text-[11px] text-primary hover:text-secondary font-semibold transition-colors disabled:opacity-50"
+              >
+                {fetching ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                {fetching ? 'Connecting…' : 'Fetch Models from URL'}
+              </button>
+            </div>
+            <input
+              type="text"
+              value={modelsInput}
+              onChange={e => handleModelsChange(e.target.value)}
+              placeholder="e.g. sol, terra, luna, mistral:latest"
+              className={inputCls}
+            />
+            <p className="text-[10px] text-text-muted/70">
+              Type your model IDs manually or click <strong>Fetch Models</strong> to auto-discover models from this endpoint.
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export const EnvSettings: React.FC = () => {
   const { fetchModels } = useChatStore();
 
-  const [source, setSource]       = useState<'env' | 'db'>('env');
-  const [values, setValues]       = useState<Record<string, string>>({});
-  const [loading, setLoading]     = useState(true);
-  const [saving, setSaving]       = useState(false);
-  const [toast, setToast]         = useState<{ ok: boolean; msg: string } | null>(null);
-  const [dotenvKeys, setDotenvKeys] = useState<string[]>([]);
-  const [advOpen, setAdvOpen]     = useState(false);
-
+  const [source, setSource]               = useState<'env' | 'db'>('env');
+  const [values, setValues]               = useState<Record<string, string>>({});
+  const [customProviders, setCustomProviders] = useState<CustomProvider[]>([]);
+  const [loading, setLoading]             = useState(true);
+  const [saving, setSaving]               = useState(false);
+  const [toast, setToast]                 = useState<{ ok: boolean; msg: string } | null>(null);
+  const [dotenvKeys, setDotenvKeys]       = useState<string[]>([]);
+  const [advOpen, setAdvOpen]             = useState(false);
 
   // Load settings from backend
   const load = useCallback(async () => {
@@ -225,6 +377,18 @@ export const EnvSettings: React.FC = () => {
       const map: Record<string, string> = {};
       for (const s of settings) map[s.key] = s.rawValue;
       setValues(map);
+
+      // Parse custom providers
+      if (map['CUSTOM_PROVIDERS']) {
+        try {
+          const parsed = JSON.parse(map['CUSTOM_PROVIDERS']);
+          if (Array.isArray(parsed)) {
+            setCustomProviders(parsed);
+          }
+        } catch {
+          setCustomProviders([]);
+        }
+      }
     } catch (err) {
       showToast(false, 'Failed to load settings');
     } finally {
@@ -236,11 +400,35 @@ export const EnvSettings: React.FC = () => {
 
   const showToast = (ok: boolean, msg: string) => {
     setToast({ ok, msg });
-    setTimeout(() => setToast(null), 3000);
+    setTimeout(() => setToast(null), 3500);
   };
 
   const handleChange = (key: string, val: string) => {
     setValues(prev => ({ ...prev, [key]: val }));
+  };
+
+  const handleCustomProviderUpdate = (index: number, updated: CustomProvider) => {
+    setCustomProviders(prev => {
+      const copy = [...prev];
+      copy[index] = updated;
+      return copy;
+    });
+  };
+
+  const handleCustomProviderDelete = (index: number) => {
+    setCustomProviders(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleAddCustomProvider = () => {
+    const newProvider: CustomProvider = {
+      id: `custom_${Date.now()}`,
+      name: 'Custom Provider',
+      baseURL: 'http://localhost:11434/v1',
+      apiKey: '',
+      models: ['sol', 'terra', 'luna'],
+      enabled: true,
+    };
+    setCustomProviders(prev => [...prev, newProvider]);
   };
 
   const handleSourceChange = async (newSource: 'env' | 'db') => {
@@ -262,7 +450,11 @@ export const EnvSettings: React.FC = () => {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const entries = Object.entries(values).map(([key, value]) => ({ key, value }));
+      const mergedValues = {
+        ...values,
+        CUSTOM_PROVIDERS: JSON.stringify(customProviders),
+      };
+      const entries = Object.entries(mergedValues).map(([key, value]) => ({ key, value }));
       const res = await fetch(`${API}/env/settings`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -294,8 +486,7 @@ export const EnvSettings: React.FC = () => {
       <div>
         <h4 className="text-sm font-bold text-text-main font-heading mb-1">Environment Settings</h4>
         <p className="text-xs text-text-muted leading-relaxed">
-          Configure API keys, provider URLs, and agent parameters. Save to DB, then switch source to
-          activate — no restart needed.
+          Configure API keys, provider endpoints, and custom OpenAI-compatible AI servers. Save to DB to activate dynamically.
         </p>
       </div>
 
@@ -329,12 +520,12 @@ export const EnvSettings: React.FC = () => {
         {source === 'db' && (
           <div className="flex items-center gap-1.5 text-[10px] text-emerald-400/80">
             <CheckCircle2 className="w-3 h-3" />
-            Database settings are ACTIVE — all keys below are being used.
+            Database settings are ACTIVE — all keys and endpoints below are being used.
           </div>
         )}
       </div>
 
-      {/* Provider cards */}
+      {/* Built-in Provider cards */}
       {PROVIDERS.map(provider => (
         <ProviderCard
           key={provider.id}
@@ -343,6 +534,46 @@ export const EnvSettings: React.FC = () => {
           onChange={handleChange}
         />
       ))}
+
+      {/* Custom AI Providers Section */}
+      <div className="space-y-3 pt-2">
+        <div className="flex items-center justify-between">
+          <div>
+            <h5 className="text-xs font-bold text-text-main uppercase tracking-wider flex items-center gap-1.5">
+              <Globe className="w-4 h-4 text-purple-400" />
+              Custom AI Providers & Endpoints
+            </h5>
+            <p className="text-[11px] text-text-muted">
+              Add any OpenAI-compatible provider (e.g. Sol Terra Luna, OpenRouter, vLLM, DeepSeek, Together, LM Studio).
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleAddCustomProvider}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/40 text-purple-300 text-xs font-bold rounded-lg transition-all active:scale-95"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add Custom Provider
+          </button>
+        </div>
+
+        {customProviders.length === 0 ? (
+          <div className="p-4 border border-dashed border-border-dark/60 rounded-xl bg-card/5 text-center text-text-muted text-xs space-y-1">
+            <p>No custom providers configured yet.</p>
+            <p className="text-[10px] text-text-muted/60">Click "+ Add Custom Provider" to add custom endpoints like Sol Terra Luna.</p>
+          </div>
+        ) : (
+          customProviders.map((cp, idx) => (
+            <CustomProviderCard
+              key={cp.id || idx}
+              provider={cp}
+              onUpdate={updated => handleCustomProviderUpdate(idx, updated)}
+              onDelete={() => handleCustomProviderDelete(idx)}
+              onToast={showToast}
+            />
+          ))
+        )}
+      </div>
 
       {/* Advanced */}
       <div className="border border-border-dark/50 rounded-xl overflow-hidden bg-card/10">
