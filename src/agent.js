@@ -1341,6 +1341,9 @@ Before you call any browse_web action (except 'extract_text' or 'screenshot'), y
     llmClient = new OpenAI({
       baseURL: matchingCustom.baseURL,
       apiKey:  matchingCustom.apiKey || 'custom',
+      defaultHeaders: {
+        'User-Agent': 'Claude-Desktop/0.7.6',
+      }
     });
   } else if (isOpenAI) {
     providerLabel = 'OpenAI';

@@ -170,7 +170,13 @@ app.get('/models', async (_req, res) => {
     // If models array is empty and baseURL is provided, try to discover models
     if (providerModels.length === 0 && provider.baseURL) {
       try {
-        const client = new OpenAI({ baseURL: provider.baseURL, apiKey: provider.apiKey || 'dummy-key' });
+        const client = new OpenAI({
+          baseURL: provider.baseURL,
+          apiKey: provider.apiKey || 'dummy-key',
+          defaultHeaders: {
+            'User-Agent': 'Claude-Desktop/0.7.6',
+          }
+        });
         const list = await client.models.list();
         if (list && Array.isArray(list.data) && list.data.length > 0) {
           providerModels = list.data.map(m => m.id).filter(Boolean);
@@ -179,7 +185,9 @@ app.get('/models', async (_req, res) => {
         // try ollama /api/tags fallback
         try {
           const cleanHost = provider.baseURL.replace(/\/v1\/?$/, '').replace(/\/+$/, '');
-          const tagsRes = await fetch(`${cleanHost}/api/tags`);
+          const tagsRes = await fetch(`${cleanHost}/api/tags`, {
+            headers: { 'User-Agent': 'Claude-Desktop/0.7.6' }
+          });
           if (tagsRes.ok) {
             const data = await tagsRes.json();
             if (data && Array.isArray(data.models)) {
@@ -380,6 +388,9 @@ app.post('/memories/summarize', async (req, res) => {
       llmClient = new OpenAI({
         baseURL: matchingCustom.baseURL,
         apiKey: matchingCustom.apiKey || 'custom',
+        defaultHeaders: {
+          'User-Agent': 'Claude-Desktop/0.7.6',
+        }
       });
     } else if (isOpenAI) {
       llmClient = new OpenAI({

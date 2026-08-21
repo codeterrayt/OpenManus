@@ -110,39 +110,84 @@ router.get('/dotenv', (_req, res) => {
 
 // POST /env/test-provider  body: { baseURL, apiKey }
 router.post('/test-provider', async (req, res) => {
-  const { baseURL, apiKey } = req.body ?? {};
+  let { baseURL, apiKey } = req.body ?? {};
   if (!baseURL) {
     return res.status(400).json({ error: 'baseURL is required' });
   }
 
+  baseURL = baseURL.trim().replace(/\/+$/, '');
+  const urlVariants = [
+    baseURL,
+    baseURL.endsWith('/v1') ? baseURL : `${baseURL}/v1`,
+  ];
+  // Deduplicate
+  const uniqueUrls = [...new Set(urlVariants)];
+
   let models = [];
   let errorMsg = null;
 
-  // 1. Try standard OpenAI-compatible endpoint
-  try {
-    const client = new OpenAI({ baseURL, apiKey: apiKey || 'dummy-key' });
-    const list = await client.models.list();
-    if (list && Array.isArray(list.data)) {
-      models = list.data.map(m => m.id).filter(Boolean);
-    }
-  } catch (err) {
-    errorMsg = err.message;
-  }
-
-  // 2. If OpenAI client failed, check if it's an Ollama endpoint (e.g. without /v1 or with /api/tags)
-  if (models.length === 0) {
+  for (const testUrl of uniqueUrls) {
+    // 1. Try standard OpenAI-compatible endpoint with compatible User-Agent
     try {
-      const cleanHost = baseURL.replace(/\/v1\/?$/, '').replace(/\/+$/, '');
-      const tagsRes = await fetch(`${cleanHost}/api/tags`);
-      if (tagsRes.ok) {
-        const data = await tagsRes.json();
-        if (data && Array.isArray(data.models)) {
-          models = data.models.map(m => m.name || m.model).filter(Boolean);
-          errorMsg = null;
+      const client = new OpenAI({
+        baseURL: testUrl,
+        apiKey: apiKey || 'dummy-key',
+        defaultHeaders: {
+          'User-Agent': 'Claude-Desktop/0.7.6',
         }
+      });
+      const list = await client.models.list();
+      if (list && Array.isArray(list.data) && list.data.length > 0) {
+        models = list.data.map(m => m.id).filter(Boolean);
+        errorMsg = null;
+        break;
       }
-    } catch {
-      // ignore secondary fallback error
+    } catch (err) {
+      errorMsg = err.message;
+    }
+
+    // 2. Try raw fetch with Bearer token and compatible User-Agent
+    if (models.length === 0) {
+      try {
+        const rawRes = await fetch(`${testUrl}/models`, {
+          headers: {
+            'Authorization': `Bearer ${apiKey || 'dummy-key'}`,
+            'User-Agent': 'Claude-Desktop/0.7.6',
+            'Accept': 'application/json',
+          }
+        });
+        if (rawRes.ok) {
+          const rawData = await rawRes.json();
+          const items = Array.isArray(rawData?.data) ? rawData.data : (Array.isArray(rawData?.models) ? rawData.models : []);
+          if (items.length > 0) {
+            models = items.map(m => typeof m === 'string' ? m : (m.id || m.name || m.model)).filter(Boolean);
+            errorMsg = null;
+            break;
+          }
+        }
+      } catch (err) {
+        // continue
+      }
+    }
+
+    // 3. If standard calls failed, check if it's an Ollama endpoint (e.g. /api/tags)
+    if (models.length === 0) {
+      try {
+        const cleanHost = testUrl.replace(/\/v1\/?$/, '').replace(/\/+$/, '');
+        const tagsRes = await fetch(`${cleanHost}/api/tags`, {
+          headers: { 'User-Agent': 'Claude-Desktop/0.7.6' }
+        });
+        if (tagsRes.ok) {
+          const data = await tagsRes.json();
+          if (data && Array.isArray(data.models) && data.models.length > 0) {
+            models = data.models.map(m => m.name || m.model).filter(Boolean);
+            errorMsg = null;
+            break;
+          }
+        }
+      } catch {
+        // ignore secondary fallback error
+      }
     }
   }
 
