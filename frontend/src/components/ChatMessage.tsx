@@ -2,21 +2,20 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { 
-  Bot, 
   User, 
   Copy, 
   Check, 
   RefreshCw, 
   Square, 
   Edit3, 
-  Cpu,
-  Brain
+  Sparkles
 } from 'lucide-react';
 import { GenUIRenderer } from './GenUIRenderer';
 import type { Message, ToolCall } from '../services/api';
 import MarkdownRenderer from './MarkdownRenderer';
 import { ToolCallsGroup } from './ToolCallsGroup';
 import type { StandardToolCall } from './ToolCallsGroup';
+import { ThinkingBlock } from './ThinkingBlock';
 import { useChatStore } from '../store/useChatStore';
 
 const parseC1UiBlock = (content: string) => {
@@ -34,7 +33,6 @@ const parseC1UiBlock = (content: string) => {
         const cleanContent = (content.slice(0, openIdx) + content.slice(closeIdx + closeTag.length)).trim();
         return { payload, cleanContent };
       } else {
-        // Unclosed tag
         const payload = content.slice(openIdx + openTag.length).trim();
         const cleanContent = content.slice(0, openIdx).trim();
         return { payload, cleanContent };
@@ -56,7 +54,6 @@ const parseMessageThoughts = (content: string) => {
       const response = (content.slice(0, openIdx) + content.slice(closeIdx + closeTag.length)).trim();
       return { thoughts, response };
     } else {
-      // Unclosed tag: assume everything after openTag is thoughts
       const thoughts = content.slice(openIdx + openTag.length).trim();
       const response = content.slice(0, openIdx).trim();
       return { thoughts, response };
@@ -79,7 +76,7 @@ interface ChatMessageProps {
   message: Message;
   index: number;
   isLast: boolean;
-  history: Message[]; // to find tool outputs for tool calls
+  history: Message[];
 }
 
 export const ChatMessage: React.FC<ChatMessageProps> = ({
@@ -101,7 +98,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
 
-  if (!isUser && !isAssistant) return null; // Hide tool and system messages from direct feed
+  if (!isUser && !isAssistant) return null;
 
   const handleCopy = async () => {
     if (!message.content) return;
@@ -113,7 +110,6 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   };
 
   const handleRetry = () => {
-    // Find the last user goal
     const lastUserMsg = [...history].reverse().find(m => m.role === 'user');
     if (lastUserMsg?.content) {
       startChat(lastUserMsg.content);
@@ -124,13 +120,10 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
     e.preventDefault();
     if (!editVal.trim()) return;
     setIsEditing(false);
-    // Restart conversation with edited goal
     startChat(editVal);
   };
 
-  // Find tool result, raw response, error, and compute duration for a tool call ID
   const getToolCallProps = (tc: ToolCall) => {
-    // Check if it's currently running in live store
     const liveTool = activeToolCalls[tc.id];
     if (liveTool) {
       return {
@@ -141,7 +134,6 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
       };
     }
 
-    // Otherwise, lookup from history
     const toolMsg = history.find(m => m.role === 'tool' && m.tool_call_id === tc.id);
     if (toolMsg) {
       let parsedResult = toolMsg.content;
@@ -162,11 +154,10 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
               ? ((parsedResult as any).error || (parsedResult as any).stderr) 
               : String(parsedResult ?? '')) 
           : undefined,
-        duration: undefined // static history doesn't store duration in history message
+        duration: undefined
       };
     }
 
-    // Default status
     return {
       status: 'waiting' as const,
       result: undefined,
@@ -177,68 +168,65 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 15 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      className={`flex w-full gap-4 py-6 px-4 md:px-6 rounded-2xl transition-all duration-300 ${
-        isUser 
-          ? 'justify-end' 
-          : 'bg-bg-secondary/40 border border-border-dark/30 hover:border-border-dark/60'
-      }`}
+      transition={{ duration: 0.2 }}
+      className={`flex w-full ${isUser ? 'justify-end' : 'justify-start'} group/msg`}
     >
-      <div className={`flex w-full max-w-4xl gap-4 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+      <div className={`flex w-full max-w-3xl gap-3.5 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
         {/* Avatar */}
-        <div className={`flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-between justify-center ${
+        <div className={`shrink-0 w-8 h-8 rounded-xl flex items-center justify-center mt-0.5 ${
           isUser 
-            ? 'bg-gradient-to-tr from-primary to-secondary text-white' 
-            : 'bg-card border border-border-dark text-secondary shadow-neon-cyan'
+            ? 'bg-gradient-to-tr from-indigo-500 to-indigo-600 text-white shadow-sm' 
+            : 'bg-[#151926] border border-white/[0.08] text-indigo-400 shadow-sm'
         }`}>
           {isUser ? (
-            <User className="w-5 h-5 mx-auto" />
+            <User className="w-4 h-4" />
           ) : (
-            <Bot className="w-5 h-5 mx-auto animate-pulse" />
+            <Sparkles className="w-4 h-4 text-indigo-400" />
           )}
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 space-y-4 overflow-hidden">
-          {/* User Bubble */}
+        <div className={`flex-1 space-y-3 min-w-0 ${isUser ? 'text-right' : 'text-left'}`}>
+          {/* User Message Bubble */}
           {isUser && (
-            <div className="text-right">
+            <div className="inline-block text-left max-w-2xl">
               {isEditing ? (
-                <form onSubmit={handleEditSubmit} className="inline-block w-full max-w-2xl text-left">
+                <form onSubmit={handleEditSubmit} className="w-full space-y-2">
                   <textarea
                     value={editVal}
                     onChange={(e) => setEditVal(e.target.value)}
-                    className="w-full bg-[#0F1420] text-text-main text-sm font-sans p-3.5 rounded-xl border border-primary/50 focus:border-secondary focus:outline-none focus:ring-1 focus:ring-secondary/50 font-medium"
+                    className="w-full bg-[#121624] text-white text-sm p-3 rounded-xl border border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500 leading-relaxed font-sans"
                     rows={3}
                   />
-                  <div className="flex justify-end gap-2 mt-2">
+                  <div className="flex justify-end gap-2">
                     <button
                       type="button"
                       onClick={() => setIsEditing(false)}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold text-text-muted hover:text-text-main hover:bg-card border border-border-dark transition-all"
+                      className="px-3 py-1 rounded-lg text-xs font-semibold text-slate-400 hover:text-white bg-white/[0.05] border border-white/[0.08] transition-all"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-primary hover:bg-primary/80 transition-all shadow-neon-blue"
+                      className="px-3 py-1 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition-all shadow-sm"
                     >
-                      Save & Resubmit
+                      Resubmit
                     </button>
                   </div>
                 </form>
               ) : (
-                <div className="group relative inline-block text-left">
-                  <div className="bg-primary/10 border border-primary/25 rounded-2xl px-4 py-3 text-text-main text-sm inline-block leading-relaxed max-w-2xl shadow-neon-blue select-text">
+                <div className="relative group inline-block">
+                  <div className="bg-[#171C2B] border border-white/[0.08] rounded-2xl px-4 py-3 text-slate-100 text-sm leading-relaxed shadow-sm select-text">
                     <MarkdownRenderer content={message.content || ''} />
                   </div>
                   
-                  {/* Edit Message Trigger */}
+                  {/* Edit prompt shortcut */}
                   <button
+                    type="button"
                     onClick={() => setIsEditing(true)}
-                    className="absolute -left-8 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1.5 text-text-muted hover:text-text-main rounded-md hover:bg-card border border-border-dark/40 transition-all duration-200"
+                    className="absolute -left-7 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-white rounded-md hover:bg-white/[0.08] transition-all"
                     title="Edit prompt"
                   >
                     <Edit3 className="w-3.5 h-3.5" />
@@ -248,50 +236,39 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
             </div>
           )}
 
-          {/* Assistant Bubble */}
+          {/* Assistant Message Bubble */}
           {isAssistant && (
-            <div className="space-y-4">
-              {/* Heading / Agent label */}
-              <div className="flex items-center gap-1.5">
-                <span className="font-heading font-bold text-xs tracking-wider uppercase text-text-muted">
-                  OpenManus Agent
+            <div className="space-y-3 text-left">
+              {/* Header Label */}
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-xs text-slate-200 tracking-tight">
+                  OpenManus
                 </span>
-                <span className="w-1.5 h-1.5 rounded-full bg-secondary"></span>
-                <span className="text-[10px] text-text-muted font-mono flex items-center gap-1">
-                  <Cpu className="w-3 h-3 text-primary" />
-                  Reasoning Core
+                <span className="w-1 h-1 rounded-full bg-slate-600"></span>
+                <span className="text-[11px] text-slate-500 font-mono">
+                  Autonomous Agent
                 </span>
               </div>
 
-              {/* Markdown Content */}
+              {/* Main Content */}
               {message.content && (() => {
                 const { thoughts, response } = parseMessageThoughts(message.content);
                 return (
-                  <div className="space-y-3.5 text-left select-text">
-                    {/* Collapsible Thoughts if present */}
+                  <div className="space-y-3 select-text">
+                    {/* Collapsible Thoughts */}
                     {thoughts && (
-                      <div className="bg-card/25 border border-border-dark/40 rounded-xl p-3.5 space-y-2 relative overflow-hidden select-text text-left mb-3">
-                        <details className="group cursor-pointer">
-                          <summary className="text-xs font-semibold text-text-muted select-none flex justify-between items-center group-open:mb-2 font-heading tracking-wide uppercase">
-                            <span className="flex items-center gap-2">
-                              <Brain className="w-4 h-4 text-secondary/70 group-hover:text-secondary transition-colors" />
-                              <span>Thinking Process</span>
-                            </span>
-                            <span className="text-[10px] opacity-60 group-open:rotate-180 transition-transform">▼</span>
-                          </summary>
-                          <div className="text-text-muted leading-relaxed text-sm pr-2 text-left pt-2 border-t border-border-dark/20 max-h-52 overflow-y-auto">
-                            <MarkdownRenderer content={thoughts} />
-                          </div>
-                        </details>
-                      </div>
+                      <ThinkingBlock content={thoughts} />
                     )}
-                    {/* Main text response */}
+
+                    {/* Response body */}
                     {response && (() => {
                       const { payload, cleanContent } = parseC1UiBlock(response);
                       return (
-                        <div className="space-y-4">
+                        <div className="space-y-3">
                           {cleanContent && (
-                            <MarkdownRenderer content={cleanContent} />
+                            <div className="text-sm leading-relaxed text-slate-200">
+                              <MarkdownRenderer content={cleanContent} />
+                            </div>
                           )}
                           {payload && (
                             <GenUIRenderer payload={payload} />
@@ -303,7 +280,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                 );
               })()}
 
-              {/* Tool Calls Visualizer */}
+              {/* Tool Calls Stepper */}
               {message.tool_calls && message.tool_calls.length > 0 && (() => {
                 const standardToolCalls: StandardToolCall[] = message.tool_calls.map(tc => {
                   const tcProps = getToolCallProps(tc);
@@ -324,42 +301,38 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                 return <ToolCallsGroup toolCalls={standardToolCalls} />;
               })()}
 
-              {/* Action Buttons */}
-              <div className="flex items-center gap-3 pt-3 text-text-muted border-t border-border-dark/20 mt-4">
+              {/* Quick Actions Footer */}
+              <div className="flex items-center gap-2 pt-1 opacity-80 hover:opacity-100 transition-opacity">
                 <button
+                  type="button"
                   onClick={handleCopy}
-                  className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text-main hover:bg-card border border-border-dark/50 px-2.5 py-1 rounded-md transition-all active:scale-95"
+                  className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-white px-2 py-1 rounded-md hover:bg-white/[0.06] transition-colors"
+                  title="Copy message"
                 >
-                  {copied ? (
-                    <>
-                      <Check className="w-3.5 h-3.5 text-secondary" />
-                      <span>Copied!</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5" />
-                      <span>Copy response</span>
-                    </>
-                  )}
+                  {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                  <span>{copied ? 'Copied' : 'Copy'}</span>
                 </button>
 
                 {isLast && !isStreaming && (
                   <button
+                    type="button"
                     onClick={handleRetry}
-                    className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text-main hover:bg-card border border-border-dark/50 px-2.5 py-1 rounded-md transition-all active:scale-95"
+                    className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-white px-2 py-1 rounded-md hover:bg-white/[0.06] transition-colors"
+                    title="Retry run"
                   >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <span>Retry run</span>
+                    <RefreshCw className="w-3 h-3" />
+                    <span>Retry</span>
                   </button>
                 )}
 
                 {isLast && isStreaming && (
                   <button
+                    type="button"
                     onClick={abortChat}
-                    className="flex items-center gap-1.5 text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 border border-rose-500/30 px-2.5 py-1 rounded-md transition-all active:scale-95 shadow-neon-blue animate-pulse"
+                    className="flex items-center gap-1 text-[11px] text-rose-400 hover:text-rose-300 px-2 py-1 rounded-md bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 transition-colors"
                   >
-                    <Square className="w-3.5 h-3.5 fill-rose-400" />
-                    <span>Abort execution</span>
+                    <Square className="w-3 h-3 fill-rose-400" />
+                    <span>Stop</span>
                   </button>
                 )}
               </div>

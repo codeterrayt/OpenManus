@@ -7,7 +7,6 @@ import {
   Sparkles, 
   ArrowUp,
   Cpu,
-  CornerDownLeft,
   X,
   FileText,
   Workflow,
@@ -16,7 +15,11 @@ import {
 } from 'lucide-react';
 import { useChatStore } from '../store/useChatStore';
 
-const AGENT_OPTIONS = ['OpenManus', 'CoderAgent', 'BrowserAgent'];
+const AGENT_OPTIONS = [
+  { id: 'OpenManus', name: 'OpenManus (Full Agent)' },
+  { id: 'CoderAgent', name: 'CoderAgent (Coding Sandbox)' },
+  { id: 'BrowserAgent', name: 'BrowserAgent (Web Automation)' },
+];
 
 interface AttachedFile {
   name: string;
@@ -56,11 +59,10 @@ export const ChatInput: React.FC = () => {
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 220)}px`;
     }
   }, [prompt]);
 
-  // Catch slash commands
   const handleTextChange = (val: string) => {
     setPrompt(val);
     if (val.startsWith('/')) {
@@ -76,7 +78,6 @@ export const ChatInput: React.FC = () => {
     textareaRef.current?.focus();
   };
 
-  // Drag and drop event handlers
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -121,7 +122,6 @@ export const ChatInput: React.FC = () => {
     setFiles(prev => prev.filter((_, i) => i !== idx));
   };
 
-  // Submit prompt
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
     if (isStreaming || (!prompt.trim() && files.length === 0)) return;
@@ -145,15 +145,15 @@ export const ChatInput: React.FC = () => {
   };
 
   const slashCommands = [
-    { cmd: '/web', desc: 'Execute web search/scraping tasks', icon: <Globe className="w-3.5 h-3.5" /> },
-    { cmd: '/code', desc: 'Write & execute sandbox code scripts', icon: <Terminal className="w-3.5 h-3.5" /> },
-    { cmd: '/skill', desc: 'Save or fetch custom workflows', icon: <Workflow className="w-3.5 h-3.5" /> },
-    { cmd: '/clear', desc: 'Reset conversation state', icon: <X className="w-3.5 h-3.5" /> },
+    { cmd: '/web', desc: 'Browse and extract live web pages', icon: <Globe className="w-3.5 h-3.5 text-sky-400" /> },
+    { cmd: '/code', desc: 'Execute scripts in isolated Docker sandbox', icon: <Terminal className="w-3.5 h-3.5 text-indigo-400" /> },
+    { cmd: '/skill', desc: 'Use and compose autonomous skills', icon: <Workflow className="w-3.5 h-3.5 text-amber-400" /> },
+    { cmd: '/clear', desc: 'Start a clean session', icon: <X className="w-3.5 h-3.5 text-rose-400" /> },
   ];
 
   return (
     <div 
-      className="p-4 bg-bg-secondary border-t border-border-dark relative w-full"
+      className="p-4 bg-gradient-to-t from-[#090B10] via-[#090B10]/95 to-transparent relative w-full"
       onDragEnter={handleDrag}
       onDragOver={handleDrag}
       onDragLeave={handleDrag}
@@ -161,33 +161,34 @@ export const ChatInput: React.FC = () => {
     >
       {/* Drag overlay glow */}
       {dragActive && (
-        <div className="absolute inset-0 bg-primary/10 border-2 border-dashed border-primary/50 flex items-center justify-center backdrop-blur-sm z-30 pointer-events-none rounded-t-xl transition-all duration-300">
-          <p className="text-sm font-heading font-semibold text-primary animate-pulse">
-            Drop files here to attach
+        <div className="absolute inset-0 bg-indigo-500/10 border-2 border-dashed border-indigo-500/50 flex items-center justify-center backdrop-blur-sm z-30 pointer-events-none rounded-2xl transition-all">
+          <p className="text-sm font-semibold text-indigo-300 animate-pulse">
+            Drop files to attach to session
           </p>
         </div>
       )}
 
-      <div className="max-w-4xl mx-auto space-y-3 relative">
+      <div className="max-w-4xl mx-auto space-y-2.5 relative">
         {/* Slash Command Autocomplete overlay */}
         {showSlashMenu && (
-          <div className="absolute bottom-full left-0 mb-2 w-72 glass-panel border border-border-dark rounded-xl overflow-hidden shadow-2xl z-40">
-            <div className="px-3.5 py-1.5 bg-bg-secondary border-b border-border-dark text-[10px] font-bold text-text-muted uppercase tracking-wider">
-              Slash Commands
+          <div className="absolute bottom-full left-0 mb-2 w-72 glass-floating rounded-xl overflow-hidden shadow-floating z-40">
+            <div className="px-3 py-1.5 bg-[#141824] border-b border-white/[0.06] text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              Quick Shortcuts
             </div>
             <div className="p-1 space-y-0.5">
               {slashCommands.map(item => (
                 <button
                   key={item.cmd}
+                  type="button"
                   onClick={() => selectSlashCommand(item.cmd)}
-                  className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left hover:bg-card border border-transparent hover:border-border-dark/40 text-text-muted hover:text-text-main transition-all text-xs"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left hover:bg-white/[0.06] text-slate-300 hover:text-white transition-all text-xs"
                 >
-                  <span className="p-1 rounded bg-bg-secondary border border-border-dark/40 text-primary">
+                  <span className="p-1 rounded bg-white/[0.05]">
                     {item.icon}
                   </span>
                   <div className="flex-1">
-                    <div className="font-semibold text-text-main">{item.cmd}</div>
-                    <div className="text-[10px] text-text-muted/80">{item.desc}</div>
+                    <div className="font-semibold text-white">{item.cmd}</div>
+                    <div className="text-[10px] text-slate-400">{item.desc}</div>
                   </div>
                 </button>
               ))}
@@ -197,18 +198,19 @@ export const ChatInput: React.FC = () => {
 
         {/* Attached Files List */}
         {files.length > 0 && (
-          <div className="flex flex-wrap gap-2.5 bg-card/40 border border-border-dark p-2 rounded-xl">
+          <div className="flex flex-wrap gap-2 bg-[#121622] border border-white/[0.08] p-2 rounded-xl">
             {files.map((file, idx) => (
               <div 
                 key={idx} 
-                className="flex items-center gap-2 pl-2.5 pr-1.5 py-1 rounded-lg bg-[#0F1420] border border-border-dark/60 text-[11px] text-text-main"
+                className="flex items-center gap-2 pl-2.5 pr-1.5 py-1 rounded-lg bg-[#181E2E] border border-white/[0.08] text-[11px] text-white"
               >
-                <FileText className="w-3.5 h-3.5 text-primary" />
-                <span className="max-w-[120px] truncate font-medium">{file.name}</span>
-                <span className="text-[9px] text-text-muted font-mono">({(file.size/1024).toFixed(0)}kb)</span>
+                <FileText className="w-3.5 h-3.5 text-indigo-400" />
+                <span className="max-w-[140px] truncate font-medium">{file.name}</span>
+                <span className="text-[10px] text-slate-400 font-mono">({(file.size/1024).toFixed(0)}KB)</span>
                 <button 
+                  type="button"
                   onClick={() => removeFile(idx)}
-                  className="p-1 rounded-md text-text-muted hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                  className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
                 >
                   <X className="w-3 h-3" />
                 </button>
@@ -217,25 +219,28 @@ export const ChatInput: React.FC = () => {
           </div>
         )}
 
-        {/* Core Input card */}
+        {/* Main Floating Input Capsule */}
         <form 
           onSubmit={handleSubmit}
-          className="glass-panel border border-border-dark rounded-2xl p-2.5 shadow-neon-blue focus-within:border-primary/50 focus-within:shadow-neon-cyan transition-all duration-300"
+          className="rounded-2xl border border-white/[0.1] bg-[#111520]/95 backdrop-blur-xl shadow-floating focus-within:border-indigo-500/50 transition-all duration-200 overflow-hidden"
         >
-          <textarea
-            ref={textareaRef}
-            rows={1}
-            value={prompt}
-            onChange={(e) => handleTextChange(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask OpenManus to run tasks (e.g. /code execute Fibonacci script or type / to see commands)..."
-            disabled={isStreaming}
-            className="w-full bg-transparent border-0 focus:outline-none focus:ring-0 text-text-main text-sm font-sans placeholder-text-muted resize-none max-h-48 py-2 px-3 leading-relaxed"
-          />
+          <div className="p-3">
+            <textarea
+              ref={textareaRef}
+              rows={1}
+              value={prompt}
+              onChange={(e) => handleTextChange(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Message OpenManus... (Type / for actions, Shift+Enter for new line)"
+              disabled={isStreaming}
+              className="w-full bg-transparent border-0 focus:outline-none focus:ring-0 text-white text-sm placeholder:text-slate-500 resize-none max-h-48 py-1 px-1 leading-relaxed"
+            />
+          </div>
 
-          <div className="flex items-center justify-between border-t border-border-dark/50 pt-2.5 mt-1 px-1.5">
-            {/* Left Controls: Upload & Selectors */}
-            <div className="flex items-center gap-2.5 flex-wrap">
+          {/* Controls Footer Strip */}
+          <div className="flex items-center justify-between border-t border-white/[0.06] py-2 px-3 bg-[#0D1019]/60">
+            {/* Left Options */}
+            <div className="flex items-center gap-2 flex-wrap">
               {/* File Attachment button */}
               <input
                 type="file"
@@ -248,42 +253,42 @@ export const ChatInput: React.FC = () => {
                 type="button"
                 onClick={triggerFileSelect}
                 disabled={isStreaming}
-                className="p-2 rounded-xl bg-card hover:bg-[#1E293B] border border-border-dark/60 text-text-muted hover:text-text-main transition-all active:scale-95 duration-200"
-                title="Attach local files (Drag & Drop)"
+                className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-slate-400 hover:text-white border border-white/[0.06] transition-colors"
+                title="Attach files"
               >
-                <Paperclip className="w-4 h-4" />
+                <Paperclip className="w-3.5 h-3.5" />
               </button>
 
               {/* Model Selector */}
-              <div className="flex items-center gap-1.5 bg-card border border-border-dark/60 px-2.5 py-1 rounded-xl text-[11px] text-text-muted">
-                <Cpu className="w-3.5 h-3.5 text-primary" />
+              <div className="flex items-center gap-1.5 bg-white/[0.04] hover:bg-white/[0.07] border border-white/[0.08] px-2.5 py-1 rounded-lg text-xs transition-colors">
+                <Cpu className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
                 <select
                   value={selectedModel}
                   onChange={(e) => setSelectedModel(e.target.value)}
-                  className="bg-transparent text-text-main border-none focus:ring-0 cursor-pointer font-semibold py-0.5 outline-none max-w-[200px] truncate"
+                  className="bg-transparent text-slate-200 border-none focus:ring-0 cursor-pointer font-medium text-[11px] py-0 outline-none max-w-[180px] truncate"
                 >
                   {models.ollama && models.ollama.length > 0 && (
-                    <optgroup label="Local Ollama Models" className="bg-bg-secondary text-text-muted font-normal">
+                    <optgroup label="Local Ollama Models" className="bg-[#121622] text-slate-400">
                       {models.ollama.map(opt => (
-                        <option key={opt} value={opt} className="bg-bg-secondary text-text-main">
+                        <option key={opt} value={opt} className="bg-[#121622] text-white">
                           {opt}
                         </option>
                       ))}
                     </optgroup>
                   )}
                   {models.openai && models.openai.length > 0 && (
-                    <optgroup label="OpenAI Models" className="bg-bg-secondary text-text-muted font-normal">
+                    <optgroup label="OpenAI Models" className="bg-[#121622] text-slate-400">
                       {models.openai.map(opt => (
-                        <option key={opt.id} value={opt.id} className="bg-bg-secondary text-text-main">
+                        <option key={opt.id} value={opt.id} className="bg-[#121622] text-white">
                           {opt.name} ({opt.pricing})
                         </option>
                       ))}
                     </optgroup>
                   )}
                   {models.groq && models.groq.length > 0 && (
-                    <optgroup label="Groq Models (Free Tier)" className="bg-bg-secondary text-text-muted font-normal">
+                    <optgroup label="Groq Models (Free Tier)" className="bg-[#121622] text-slate-400">
                       {models.groq.map(opt => (
-                        <option key={opt.id} value={opt.id} className="bg-bg-secondary text-text-main">
+                        <option key={opt.id} value={opt.id} className="bg-[#121622] text-white">
                           {opt.name} ({opt.limits || opt.pricing})
                         </option>
                       ))}
@@ -291,9 +296,9 @@ export const ChatInput: React.FC = () => {
                   )}
                   {models.custom && models.custom.map(provider => (
                     provider.enabled && provider.models && provider.models.length > 0 ? (
-                      <optgroup key={provider.id} label={`${provider.name} (Custom)`} className="bg-bg-secondary text-text-muted font-normal">
+                      <optgroup key={provider.id} label={`${provider.name} (Custom)`} className="bg-[#121622] text-slate-400">
                         {provider.models.map(opt => (
-                          <option key={opt} value={opt} className="bg-bg-secondary text-text-main">
+                          <option key={opt} value={opt} className="bg-[#121622] text-white">
                             {opt}
                           </option>
                         ))}
@@ -304,15 +309,15 @@ export const ChatInput: React.FC = () => {
               </div>
 
               {/* Agent Selector */}
-              <div className="flex items-center gap-1.5 bg-card border border-border-dark/60 px-2.5 py-1 rounded-xl text-[11px] text-text-muted">
-                <Sparkles className="w-3.5 h-3.5 text-secondary" />
+              <div className="flex items-center gap-1.5 bg-white/[0.04] hover:bg-white/[0.07] border border-white/[0.08] px-2.5 py-1 rounded-lg text-xs transition-colors">
+                <Sparkles className="w-3.5 h-3.5 text-sky-400 shrink-0" />
                 <select
                   value={selectedAgent}
                   onChange={(e) => setSelectedAgent(e.target.value)}
-                  className="bg-transparent text-text-main border-none focus:ring-0 cursor-pointer font-semibold py-0.5 outline-none"
+                  className="bg-transparent text-slate-200 border-none focus:ring-0 cursor-pointer font-medium text-[11px] py-0 outline-none"
                 >
                   {AGENT_OPTIONS.map(opt => (
-                    <option key={opt} value={opt} className="bg-bg-secondary text-text-main">{opt}</option>
+                    <option key={opt.id} value={opt.id} className="bg-[#121622] text-white">{opt.name}</option>
                   ))}
                 </select>
               </div>
@@ -322,47 +327,41 @@ export const ChatInput: React.FC = () => {
                 type="button"
                 onClick={() => setUseMemory(!useMemory)}
                 disabled={isStreaming}
-                className={`flex items-center gap-1.5 border px-2.5 py-1 rounded-xl text-[11px] font-semibold transition-all duration-200 active:scale-95 ${
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-colors ${
                   useMemory 
-                    ? 'bg-primary/20 border-primary/45 text-primary hover:bg-primary/30' 
-                    : 'bg-card border-border-dark/60 text-text-muted hover:text-text-main hover:bg-[#1E293B] disabled:opacity-50'
+                    ? 'bg-indigo-500/15 border-indigo-500/40 text-indigo-300' 
+                    : 'bg-white/[0.03] border-white/[0.06] text-slate-400 hover:text-white'
                 }`}
-                title="Toggle long-term global memory context usage"
+                title="Toggle long-term memories"
               >
-                <Brain className="w-3.5 h-3.5 shrink-0" />
-                <span>{useMemory ? 'Memory Active' : 'Memory Disabled'}</span>
+                <Brain className="w-3.5 h-3.5" />
+                <span>{useMemory ? 'Memory' : 'No Memory'}</span>
               </button>
             </div>
 
-            {/* Right Control: Send or Stop button */}
+            {/* Right Action Button */}
             <div className="flex items-center gap-2">
-              {!isStreaming && (
-                <span className="hidden sm:flex items-center gap-1 text-[10px] text-text-muted font-mono mr-1.5 bg-card border border-border-dark/40 px-2 py-0.5 rounded">
-                  <span>Enter</span>
-                  <CornerDownLeft className="w-2.5 h-2.5 opacity-60" />
-                </span>
-              )}
-              
               {isStreaming ? (
                 <button
                   type="button"
                   onClick={abortChat}
-                  className="p-2 rounded-xl flex items-center justify-center bg-rose-500 hover:bg-rose-600 text-white shadow-neon-blue transition-all active:scale-95 duration-200 animate-pulse"
+                  className="p-1.5 rounded-lg flex items-center justify-center bg-rose-500 hover:bg-rose-600 text-white transition-all active:scale-95 shadow-sm"
                   title="Stop Agent execution"
                 >
-                  <Square className="w-4 h-4 fill-white stroke-[2.5]" />
+                  <Square className="w-4 h-4 fill-white" />
                 </button>
               ) : (
                 <button
                   type="submit"
                   disabled={!prompt.trim() && files.length === 0}
-                  className={`p-2 rounded-xl flex items-center justify-center transition-all active:scale-95 duration-200 ${
+                  className={`p-1.5 rounded-lg flex items-center justify-center transition-all active:scale-95 ${
                     prompt.trim() || files.length > 0
-                      ? 'bg-gradient-to-tr from-primary to-secondary text-white shadow-neon-cyan'
-                      : 'bg-card text-text-muted border border-border-dark/50 cursor-not-allowed'
+                      ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-soft-glow cursor-pointer'
+                      : 'bg-white/[0.05] text-slate-600 border border-white/[0.06] cursor-not-allowed'
                   }`}
+                  title="Send message (Enter)"
                 >
-                  <ArrowUp className="w-4.5 h-4.5 stroke-[2.5]" />
+                  <ArrowUp className="w-4 h-4 stroke-[2.5]" />
                 </button>
               )}
             </div>

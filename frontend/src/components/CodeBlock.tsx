@@ -1,6 +1,6 @@
 // src/components/CodeBlock.tsx
 import React, { useState } from 'react';
-import { Check, Copy } from 'lucide-react';
+import { Check, Copy, FileCode2 } from 'lucide-react';
 
 interface CodeBlockProps {
   code: string;
@@ -20,48 +20,50 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ code, language = 'text' })
     }
   };
 
+  const lineCount = code.split('\n').length;
+
   return (
-    <div className="my-4 rounded-xl border border-border-dark bg-[#0F1420] overflow-hidden font-mono text-sm shadow-neon-blue transition-all duration-300 hover:shadow-neon-cyan">
-      {/* Tab/Header bar */}
-      <div className="flex items-center justify-between px-4 py-2.5 bg-bg-secondary border-b border-border-dark text-xs text-text-muted">
+    <div className="my-3.5 rounded-xl border border-white/[0.08] bg-[#0A0C13] overflow-hidden font-mono text-xs shadow-card-subtle">
+      {/* Header bar */}
+      <div className="flex items-center justify-between px-3.5 py-2 bg-[#121622] border-b border-white/[0.06] text-slate-400">
         <div className="flex items-center gap-2">
-          {/* Traffic light dots */}
-          <div className="flex gap-1.5">
-            <span className="w-3 h-3 rounded-full bg-[#FF5F56] opacity-90"></span>
-            <span className="w-3 h-3 rounded-full bg-[#FFBD2E] opacity-90"></span>
-            <span className="w-3 h-3 rounded-full bg-[#27C93F] opacity-90"></span>
-          </div>
-          <span className="ml-3 font-medium tracking-wider text-text-muted/80 uppercase text-[10px] bg-card px-2 py-0.5 rounded border border-border-dark/50">
+          <FileCode2 className="w-3.5 h-3.5 text-indigo-400" />
+          <span className="font-semibold text-slate-300 uppercase tracking-wider text-[11px]">
             {language}
+          </span>
+          <span className="text-[10px] text-slate-500 font-mono">
+            {lineCount} {lineCount === 1 ? 'line' : 'lines'}
           </span>
         </div>
         
         <button
+          type="button"
           onClick={copyToClipboard}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-card hover:bg-[#1E293B] border border-border-dark/60 text-text-muted hover:text-text-main transition-all active:scale-95 duration-200"
-          title="Copy code to clipboard"
+          className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-slate-300 hover:text-white transition-all active:scale-95 text-[11px] font-sans"
+          title="Copy code"
         >
           {copied ? (
             <>
-              <Check className="w-3.5 h-3.5 text-secondary" />
-              <span className="text-secondary font-medium">Copied!</span>
+              <Check className="w-3 h-3 text-emerald-400" />
+              <span className="text-emerald-400 font-medium">Copied</span>
             </>
           ) : (
             <>
-              <Copy className="w-3.5 h-3.5" />
+              <Copy className="w-3 h-3" />
               <span>Copy</span>
             </>
           )}
         </button>
       </div>
       
-      {/* Code Text Panel */}
-      <div className="p-4 overflow-x-auto text-left max-h-[450px] bg-[#0B0F19]/90">
-        <pre className="text-sm font-mono leading-relaxed text-[#E2E8F0]">
+      {/* Code Area */}
+      <div className="p-3.5 overflow-x-auto text-left max-h-[480px] bg-[#08090E]">
+        <pre className="font-mono text-xs leading-relaxed text-slate-200">
           <code className="block select-text whitespace-pre">{code}</code>
         </pre>
       </div>
     </div>
   );
 };
+
 export default CodeBlock;

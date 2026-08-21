@@ -2,7 +2,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { 
   Menu, 
-  X, 
   PanelRight, 
   PanelLeft,
   Terminal, 
@@ -10,7 +9,7 @@ import {
   Cpu, 
   Sparkles,
   ArrowRight,
-  MousePointerClick
+  ArrowDown
 } from 'lucide-react';
 import { useChatStore } from './store/useChatStore';
 import Sidebar from './components/Sidebar';
@@ -18,7 +17,6 @@ import ChatInput from './components/ChatInput';
 import ChatMessage from './components/ChatMessage';
 import StreamingMessage from './components/StreamingMessage';
 import RightPanel from './components/RightPanel';
-import BrowserPanel from './components/BrowserPanel';
 
 function App() {
   const {
@@ -30,11 +28,10 @@ function App() {
     rightPanelCollapsed,
     toggleRightPanel,
     startChat,
-    isBrowserActive,
-    isBrowserUnplugged
   } = useChatStore();
 
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const userScrolledUp = useRef(false);
@@ -45,74 +42,78 @@ function App() {
     if (!el) return;
     const onScroll = () => {
       const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-      // Within 80px of bottom = user wants to follow; else paused
-      userScrolledUp.current = distFromBottom > 80;
+      const isScrolledUp = distFromBottom > 100;
+      userScrolledUp.current = isScrolledUp;
+      setShowScrollBottom(isScrolledUp);
     };
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
   }, []);
 
-  // Auto scroll to bottom only when user hasn't scrolled up
   const scrollToBottom = (force = false, behavior: ScrollBehavior = 'smooth') => {
     if (force || !userScrolledUp.current) {
       messagesEndRef.current?.scrollIntoView({ behavior });
+      if (force) {
+        userScrolledUp.current = false;
+        setShowScrollBottom(false);
+      }
     }
   };
 
-  // Scroll on new messages from history; force on new session start
   useEffect(() => {
     scrollToBottom(false, 'smooth');
   }, [activeSession?.history?.length]);
 
-  // Scroll during live streaming content, but respect user scroll
   useEffect(() => {
     scrollToBottom(false, 'auto');
   }, [streamingContent]);
 
-  // Suggestions for new chat
   const suggestions = [
     {
-      title: "Run Python Simulation",
-      desc: "Draw a fractal tree graphic in Python and save it",
-      prompt: "Write a Python script using turtle/matplotlib that generates a beautiful fractal tree, save it to fractal.png, and run it.",
-      icon: <Terminal className="w-4 h-4 text-primary" />
+      title: "Sandbox Code Execution",
+      desc: "Run Python math simulation and export plot",
+      prompt: "Write a Python script using matplotlib that plots a mandelbrot fractal, saves it to fractal.png, and run it in the sandbox.",
+      icon: <Terminal className="w-4 h-4 text-indigo-400" />
     },
     {
-      title: "Browse the Web",
-      desc: "Extract developer jobs info from standard listings",
-      prompt: "Browse the web to search for current React and AI developer job trends. Extract the key highlights and format as a table.",
-      icon: <Globe className="w-4 h-4 text-secondary" />
+      title: "Live Web Automation",
+      desc: "Search and synthesize current trends",
+      prompt: "Browse the web to search for current AI agent design trends and architectures. Extract key patterns and summarize as a markdown table.",
+      icon: <Globe className="w-4 h-4 text-sky-400" />
     },
     {
-      title: "Evaluate JS sandbox",
-      desc: "Perform advanced data calculations in Node.js",
-      prompt: "Write a Node.js script that computes the first 50 prime numbers, calculates their sum and average, and run it inside the sandbox.",
-      icon: <Cpu className="w-4 h-4 text-amber-400" />
+      title: "Data Processing",
+      desc: "Compute prime numbers and statistics in Node.js",
+      prompt: "Write a Node.js script that computes the first 100 prime numbers, calculates their statistical distribution, and run it inside the container.",
+      icon: <Cpu className="w-4 h-4 text-emerald-400" />
     }
   ];
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-background text-text-main font-sans text-sm select-none antialiased">
-      {/* Mobile Menu Headers */}
-      <header className="flex md:hidden w-full h-14 bg-bg-secondary border-b border-border-dark px-4 items-center justify-between z-30 shrink-0">
+      {/* Mobile Top Navigation Header */}
+      <header className="flex md:hidden w-full h-13 bg-[#0C0F18] border-b border-white/[0.08] px-4 items-center justify-between z-30 shrink-0">
         <button 
+          type="button"
           onClick={() => setMobileSidebarOpen(true)}
-          className="text-text-muted hover:text-text-main p-1 rounded-md"
+          className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/[0.06]"
         >
-          <Menu className="w-6 h-6" />
+          <Menu className="w-5 h-5" />
         </button>
-        <span className="font-heading font-bold text-xs tracking-wider text-text-main">
-          OPENMANUS ENGINE
-        </span>
+        <div className="flex items-center gap-1.5 font-heading font-bold text-xs tracking-tight text-white">
+          <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+          <span>OpenManus</span>
+        </div>
         <button 
+          type="button"
           onClick={toggleRightPanel}
-          className="text-text-muted hover:text-text-main p-1 rounded-md"
+          className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/[0.06]"
         >
           <PanelRight className="w-5 h-5" />
         </button>
       </header>
 
-      {/* Sidebar: Left Panel (Desktop standard, Mobile overlay) */}
+      {/* Sidebar: Left Panel */}
       <div className={`
         fixed inset-y-0 left-0 z-40 transform md:relative md:translate-x-0 transition-all duration-300 ease-in-out shrink-0
         ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
@@ -121,81 +122,76 @@ function App() {
         <Sidebar />
       </div>
 
-      {/* Mobile Sidebar Backdrop Overlay */}
+      {/* Mobile Sidebar Backdrop */}
       {mobileSidebarOpen && (
         <div 
           onClick={() => setMobileSidebarOpen(false)}
-          className="fixed inset-0 bg-black/60 backdrop-blur-xs z-30 md:hidden"
+          className="fixed inset-0 bg-black/70 backdrop-blur-xs z-30 md:hidden"
         />
       )}
 
       {/* Center Layout: Main Chat Viewport */}
-      <main className="flex-1 flex flex-col h-full bg-[#0E1320]/45 overflow-hidden relative">
+      <main className="flex-1 flex flex-col h-full bg-[#090B10] overflow-hidden relative">
         {/* Desktop Header */}
-        <header className="hidden md:flex w-full h-14 bg-bg-secondary/40 backdrop-blur-md border-b border-border-dark/60 px-6 items-center justify-between z-20 shrink-0">
+        <header className="hidden md:flex w-full h-13 bg-[#0A0C13] border-b border-white/[0.06] px-5 items-center justify-between z-20 shrink-0">
           <div className="flex items-center gap-3">
             {sidebarCollapsed && (
               <button 
+                type="button"
                 onClick={toggleSidebar}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs bg-[#1E293B] hover:bg-[#1E293B]/85 text-text-muted hover:text-text-main border border-border-dark/60 font-medium transition-all duration-200"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs bg-[#121622] hover:bg-[#161B2A] text-slate-300 hover:text-white border border-white/[0.08] font-medium transition-colors"
                 title="Expand Sidebar"
               >
-                <PanelLeft className="w-4 h-4 text-primary animate-pulse" />
+                <PanelLeft className="w-3.5 h-3.5 text-indigo-400" />
                 <span>Show Sidebar</span>
               </button>
             )}
-            <span className="font-heading font-bold text-xs tracking-wider text-text-muted uppercase">
-              {activeSession ? 'Session Active' : 'New Session'}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+              <span className="font-semibold text-xs text-slate-300 tracking-tight">
+                {activeSession ? activeSession.goal : 'New Mission'}
+              </span>
+            </div>
           </div>
           
           {rightPanelCollapsed && (
             <button 
+              type="button"
               onClick={toggleRightPanel}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-[#1E293B] hover:bg-[#1E293B]/80 text-text-muted hover:text-text-main border border-border-dark font-medium transition-all duration-200"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs bg-[#121622] hover:bg-[#161B2A] text-slate-300 hover:text-white border border-white/[0.08] font-medium transition-colors"
               title="Open Workspace"
             >
-              <PanelRight className="w-4 h-4 text-primary" />
+              <PanelRight className="w-3.5 h-3.5 text-indigo-400" />
               <span>Workspace</span>
             </button>
           )}
         </header>
 
-        {/* Mobile Sidebar Close Button inside viewport */}
-        {mobileSidebarOpen && (
-          <button
-            onClick={() => setMobileSidebarOpen(false)}
-            className="absolute top-4 left-4 z-50 text-text-muted hover:text-text-main p-2 rounded-xl bg-card border border-border-dark md:hidden"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        )}
-
         {/* Scrollable messages zone */}
         <div 
           ref={scrollContainerRef}
-          className="flex-1 overflow-y-auto px-4 py-6 md:px-8 space-y-6 scrollbar-thin"
+          className="flex-1 overflow-y-auto px-4 py-6 md:px-8 space-y-6 scrollbar-thin relative"
         >
           {activeSession ? (
-            <div className="max-w-4xl mx-auto space-y-8 pb-10">
-              {/* Header card with active goal summary */}
-              <div className="glass-card rounded-2xl p-4 md:p-5 border border-border-dark/60 text-left relative overflow-hidden flex flex-col md:flex-row md:items-center gap-4 justify-between">
-                <div className="space-y-1 select-text">
-                  <span className="text-[10px] font-bold text-secondary uppercase tracking-widest font-heading">
-                    Active Mission Goal
-                  </span>
-                  <h2 className="text-sm font-semibold text-text-main font-sans leading-relaxed">
+            <div className="max-w-3xl mx-auto space-y-6 pb-6">
+              {/* Mission Goal Summary Header */}
+              <div className="rounded-2xl p-4 bg-[#0F131E] border border-white/[0.08] flex items-center justify-between gap-4">
+                <div className="space-y-0.5 select-text min-w-0">
+                  <div className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider font-mono">
+                    Mission Directive
+                  </div>
+                  <h2 className="text-sm font-semibold text-white truncate">
                     {activeSession.goal}
                   </h2>
                 </div>
                 
-                {/* Panel toggle when collapsed */}
                 {rightPanelCollapsed && (
                   <button
+                    type="button"
                     onClick={toggleRightPanel}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-[#1E293B] hover:bg-[#1E293B]/80 text-text-muted hover:text-text-main border border-border-dark font-medium transition-all duration-200"
+                    className="shrink-0 flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs bg-[#151926] hover:bg-[#1A2030] text-slate-300 hover:text-white border border-white/[0.08] transition-colors"
                   >
-                    <PanelRight className="w-4 h-4 text-primary" />
+                    <PanelRight className="w-3.5 h-3.5 text-indigo-400" />
                     <span>Workspace</span>
                   </button>
                 )}
@@ -220,63 +216,65 @@ function App() {
               </div>
             </div>
           ) : (
-            /* Empty state overlay suggestions */
-            <div className="h-full flex flex-col justify-center items-center max-w-2xl mx-auto text-center px-4 space-y-10">
-              <div className="space-y-3">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-primary to-secondary flex items-center justify-center shadow-neon-glow mx-auto mb-2 animate-bounce">
-                  <Sparkles className="w-9 h-9 text-white" />
+            /* Empty state: Executive Hero & Prompt Chips */
+            <div className="h-full flex flex-col justify-center items-center max-w-2xl mx-auto text-center px-4 space-y-8 animate-fade-in">
+              <div className="space-y-2.5">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center shadow-soft-glow mx-auto mb-2">
+                  <Sparkles className="w-6 h-6 text-white" />
                 </div>
-                <h2 className="text-2xl font-bold font-heading tracking-tight text-text-main">
-                  Autonomous AI Action Engine
+                <h2 className="text-2xl font-bold font-heading tracking-tight text-white">
+                  OpenManus Autonomous Engine
                 </h2>
-                <p className="text-xs text-text-muted max-w-md mx-auto leading-relaxed">
-                  OpenManus coordinates sandbox executors and web browsers to run code and browse autonomously. What task should I run?
+                <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
+                  Reason, execute sandbox code, browse the web, and compose multi-step autonomous tasks. What should we accomplish today?
                 </p>
               </div>
 
-              {/* Custom Suggestions Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
+              {/* Prompt Suggestions Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 w-full">
                 {suggestions.map((sug, i) => (
                   <button
                     key={i}
+                    type="button"
                     onClick={() => startChat(sug.prompt)}
-                    className="flex flex-col text-left p-4 rounded-xl bg-card/40 border border-border-dark/65 hover:border-primary/45 hover:bg-card/75 transition-all duration-300 group shadow-sm active:scale-98"
+                    className="flex flex-col text-left p-3.5 rounded-xl bg-[#111520] border border-white/[0.06] hover:border-indigo-500/40 hover:bg-[#151A28] transition-all group shadow-sm active:scale-98 cursor-pointer"
                   >
                     <div className="flex items-center justify-between mb-2">
-                      <div className="p-1.5 rounded-lg bg-bg-secondary border border-border-dark">
+                      <div className="p-1.5 rounded-lg bg-white/[0.05] border border-white/[0.08]">
                         {sug.icon}
                       </div>
-                      <MousePointerClick className="w-3.5 h-3.5 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
+                      <ArrowRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-indigo-400 group-hover:translate-x-0.5 transition-all" />
                     </div>
-                    <h3 className="text-xs font-bold text-text-main font-heading mb-1">
+                    <div className="font-semibold text-xs text-white mb-0.5 group-hover:text-indigo-300 transition-colors">
                       {sug.title}
-                    </h3>
-                    <p className="text-[10px] text-text-muted leading-relaxed">
+                    </div>
+                    <div className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed">
                       {sug.desc}
-                    </p>
-                    <span className="mt-3 text-[10px] text-primary hover:text-secondary inline-flex items-center gap-1 font-semibold">
-                      <span>Launch Task</span>
-                      <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-                    </span>
+                    </div>
                   </button>
                 ))}
               </div>
             </div>
           )}
-        </div>
-        
-        {/* Floating Mini Browser (PiP View) when inspector is closed */}
-        {isBrowserActive && !isBrowserUnplugged && rightPanelCollapsed && (
-          <div className="absolute bottom-[96px] right-6 w-[380px] h-[260px] z-30 bg-[#070A13] border border-border-dark/80 shadow-2xl rounded-2xl overflow-hidden flex flex-col ring-1 ring-primary/20 animate-slide-up transition-all duration-300 transform hover:scale-[1.02]">
-            <BrowserPanel isMini={true} />
-          </div>
-        )}
 
-        {/* Input Zone */}
+          {/* Floating Scroll to Bottom Button */}
+          {showScrollBottom && (
+            <button
+              type="button"
+              onClick={() => scrollToBottom(true, 'smooth')}
+              className="fixed bottom-28 right-8 md:right-96 z-30 p-2 rounded-full bg-[#151926] border border-white/[0.1] text-slate-300 hover:text-white shadow-floating transition-all active:scale-95"
+              title="Scroll to bottom"
+            >
+              <ArrowDown className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        {/* Input Bar */}
         <ChatInput />
       </main>
 
-      {/* Right Diagnostics Panel */}
+      {/* Right Panel Workspace */}
       <RightPanel />
     </div>
   );

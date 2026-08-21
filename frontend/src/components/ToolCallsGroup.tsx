@@ -1,3 +1,4 @@
+// src/components/ToolCallsGroup.tsx
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -10,7 +11,10 @@ import {
   XCircle, 
   Clock, 
   Eye, 
-  Code
+  FileCode,
+  Copy,
+  Check,
+  ChevronUp
 } from 'lucide-react';
 import { useChatStore } from '../store/useChatStore';
 
@@ -33,7 +37,7 @@ const linkify = (text: string) => {
           href={href} 
           target="_self" 
           rel="noopener noreferrer" 
-          className="text-primary hover:underline hover:text-secondary transition-colors"
+          className="text-indigo-400 hover:underline hover:text-indigo-300 font-semibold transition-colors"
         >
           {part}
         </a>
@@ -59,6 +63,7 @@ interface ToolCallsGroupProps {
 
 export const ToolCallsGroup: React.FC<ToolCallsGroupProps> = ({ toolCalls }) => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [copiedOutput, setCopiedOutput] = useState(false);
   const { setSelectedFile, setRightPanelTab, setRightPanelCollapsed } = useChatStore();
 
   if (toolCalls.length === 0) return null;
@@ -68,51 +73,54 @@ export const ToolCallsGroup: React.FC<ToolCallsGroupProps> = ({ toolCalls }) => 
   const getToolIcon = (name: string) => {
     switch (name) {
       case 'run_code':
-        return <Terminal className="w-3.5 h-3.5" />;
+        return <Terminal className="w-3.5 h-3.5 text-indigo-400" />;
       case 'browse_web':
       case 'inspect_page_html':
-        return <Globe className="w-3.5 h-3.5" />;
+        return <Globe className="w-3.5 h-3.5 text-sky-400" />;
       case 'list_skills':
       case 'get_skill':
       case 'save_skill':
-        return <FolderGit2 className="w-3.5 h-3.5" />;
+        return <FolderGit2 className="w-3.5 h-3.5 text-amber-400" />;
+      case 'write_file':
+      case 'read_file':
+        return <FileCode className="w-3.5 h-3.5 text-emerald-400" />;
       default:
-        return <Settings className="w-3.5 h-3.5" />;
+        return <Settings className="w-3.5 h-3.5 text-slate-400" />;
     }
   };
 
   const getStatusIcon = (status: StandardToolCall['status']) => {
     switch (status) {
       case 'running':
-        return <Loader2 className="w-3 h-3 text-primary animate-spin" />;
+        return <Loader2 className="w-3 h-3 text-indigo-400 animate-spin" />;
       case 'success':
-        return <CheckCircle2 className="w-3 h-3 text-emerald-400 shadow-neon-cyan" />;
+        return <CheckCircle2 className="w-3 h-3 text-emerald-400" />;
       case 'error':
         return <XCircle className="w-3 h-3 text-rose-400" />;
       default:
-        return <Clock className="w-3 h-3 text-text-muted/60" />;
+        return <Clock className="w-3 h-3 text-slate-500" />;
     }
   };
 
   const getBadgeStyle = (tc: StandardToolCall) => {
     const isSelected = tc.id === selectedId;
-    let base = "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono border cursor-pointer select-none transition-all duration-200 active:scale-95 ";
+    let base = "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono border cursor-pointer select-none transition-all duration-150 active:scale-95 ";
     
     if (isSelected) {
-      base += "bg-primary/10 border-primary text-text-main shadow-neon-blue ring-1 ring-primary/30 ";
+      base += "bg-indigo-500/15 border-indigo-500/50 text-white shadow-sm ring-1 ring-indigo-500/30 ";
     } else {
       switch (tc.status) {
         case 'running':
-          base += "bg-primary/5 border-primary/20 text-primary hover:bg-primary/10 hover:border-primary/30 ";
+          base += "bg-indigo-500/10 border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/20 ";
           break;
         case 'success':
-          base += "bg-emerald-500/5 border-emerald-500/10 text-text-main hover:bg-emerald-500/10 hover:border-emerald-500/30 ";
+          base += "bg-white/[0.03] border-white/[0.08] text-slate-300 hover:bg-white/[0.06] hover:border-white/[0.15] ";
           break;
         case 'error':
-          base += "bg-rose-500/5 border-rose-500/20 text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/35 ";
+          base += "bg-rose-500/10 border-rose-500/30 text-rose-400 hover:bg-rose-500/20 ";
           break;
         default:
-          base += "bg-card/45 border-border-dark/60 text-text-muted hover:bg-bg-secondary hover:border-border-dark/90 ";
+          base += "bg-[#131722]/60 border-white/[0.06] text-slate-400 hover:bg-[#181D2B] ";
           break;
       }
     }
@@ -134,37 +142,37 @@ export const ToolCallsGroup: React.FC<ToolCallsGroupProps> = ({ toolCalls }) => 
     return rawText;
   };
 
-  const hasOutput = (call: StandardToolCall) => {
-    return call.status === 'running' || !!call.error || (!!call.result && getOutputPreview(call).trim() !== '');
+  const handleCopyOutput = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedOutput(true);
+    setTimeout(() => setCopiedOutput(false), 2000);
   };
 
   return (
-    <div className="space-y-3.5">
-      {/* Badges Container */}
-      <div className="flex flex-wrap gap-2 items-center bg-[#0F1422]/30 p-2.5 rounded-xl border border-border-dark/40">
-        <span className="text-[10px] uppercase tracking-wider font-semibold text-text-muted mr-1">Steps:</span>
+    <div className="space-y-2.5 my-2">
+      {/* Steps Pill Strip */}
+      <div className="flex flex-wrap gap-1.5 items-center bg-[#0D1017]/80 p-2 rounded-xl border border-white/[0.06]">
+        <span className="text-[10px] uppercase tracking-wider font-semibold text-slate-500 px-1">
+          Actions ({toolCalls.length}):
+        </span>
         {toolCalls.map((tc) => (
-          <div
+          <button
+            type="button"
             key={tc.id}
             onClick={() => setSelectedId(selectedId === tc.id ? null : tc.id)}
             className={getBadgeStyle(tc)}
-            title={`${tc.name} - ${tc.status}`}
           >
+            {getToolIcon(tc.name)}
+            <span className="font-semibold">{tc.name}</span>
             {getStatusIcon(tc.status)}
-            <span className="flex items-center gap-1">
-              {getToolIcon(tc.name)}
-              <span>{tc.name}</span>
-            </span>
             {tc.duration !== undefined && (
-              <span className="text-[10px] opacity-70">
-                {(tc.duration / 1000).toFixed(1)}s
-              </span>
+              <span className="text-[10px] text-slate-500">{(tc.duration / 1000).toFixed(1)}s</span>
             )}
-          </div>
+          </button>
         ))}
       </div>
 
-      {/* Expanded Shared Console Details */}
+      {/* Selected Action Expanded Console View */}
       <AnimatePresence>
         {selectedCall && (
           <motion.div
@@ -173,29 +181,25 @@ export const ToolCallsGroup: React.FC<ToolCallsGroupProps> = ({ toolCalls }) => 
             exit={{ opacity: 0, height: 0 }}
             className="overflow-hidden"
           >
-            <div className="border border-border-dark/70 rounded-xl bg-[#090D16] overflow-hidden shadow-2xl">
-              {/* Detail Header */}
-              <div className="flex items-center justify-between px-3.5 py-2.5 bg-[#0D1220] border-b border-border-dark/60">
+            <div className="border border-white/[0.08] rounded-xl bg-[#0A0C13] overflow-hidden shadow-card-subtle">
+              {/* Card Header */}
+              <div className="flex items-center justify-between px-3.5 py-2.5 bg-[#121622] border-b border-white/[0.06]">
                 <div className="flex items-center gap-2">
-                  <Code className="w-4 h-4 text-secondary" />
-                  <span className="text-xs font-semibold text-text-main font-heading">
-                    Step Details: <span className="font-mono text-primary">{selectedCall.name}</span>
-                  </span>
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-medium ${
-                    selectedCall.status === 'success' 
-                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
-                      : selectedCall.status === 'error'
-                      ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                      : selectedCall.status === 'running'
-                      ? 'bg-primary/10 text-primary border border-primary/20 animate-pulse'
-                      : 'bg-card border border-border-dark text-text-muted'
-                  }`}>
-                    {selectedCall.status}
-                  </span>
+                  <div className="p-1 rounded-md bg-white/[0.05] border border-white/[0.08]">
+                    {getToolIcon(selectedCall.name)}
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-white font-mono">{selectedCall.name}</span>
+                    {selectedCall.args?.path && (
+                      <span className="text-[11px] text-slate-400 font-mono ml-2">
+                        {selectedCall.args.path}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-3">
-                  {selectedCall.status === 'success' && selectedCall.name === 'write_file' && selectedCall.args?.path && (
+                <div className="flex items-center gap-2">
+                  {selectedCall.name === 'write_file' && selectedCall.args?.path && (
                     <button
                       onClick={() => {
                         const relPath = selectedCall.args.path.replace(/^\/?workspace\/?/, '').replace(/^\//, '');
@@ -203,73 +207,64 @@ export const ToolCallsGroup: React.FC<ToolCallsGroupProps> = ({ toolCalls }) => 
                         setRightPanelTab('files');
                         setRightPanelCollapsed(false);
                       }}
-                      className="flex items-center gap-1 text-[10px] font-semibold text-primary bg-primary/15 hover:bg-primary/25 border border-primary/20 hover:border-primary/30 px-2.5 py-1 rounded-lg transition-all active:scale-95 shadow-neon-blue cursor-pointer"
+                      className="flex items-center gap-1 text-[11px] font-semibold text-indigo-400 hover:text-white bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 px-2.5 py-1 rounded-lg transition-all"
                     >
                       <Eye className="w-3 h-3" />
-                      <span>Open File</span>
+                      <span>Inspect File</span>
                     </button>
                   )}
-                  <button 
+
+                  {getOutputPreview(selectedCall) && (
+                    <button
+                      onClick={() => handleCopyOutput(getOutputPreview(selectedCall))}
+                      className="p-1 rounded-lg hover:bg-white/[0.08] text-slate-400 hover:text-white transition-colors"
+                      title="Copy output"
+                    >
+                      {copiedOutput ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+                  )}
+
+                  <button
                     onClick={() => setSelectedId(null)}
-                    className="text-text-muted hover:text-text-main text-[11px] font-medium transition-all"
+                    className="p-1 rounded-lg hover:bg-white/[0.08] text-slate-400 hover:text-white transition-colors"
                   >
-                    Close
+                    <ChevronUp className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>
 
-              {/* Detail Content */}
-              <div className="p-3.5 space-y-3.5">
-                {/* Arguments / Input Details */}
-                {selectedCall.name === 'run_code' && selectedCall.args?.code && (
-                  <div className="space-y-1.5 text-left">
-                    <div className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Source Code ({selectedCall.args.lang})</div>
-                    <pre className="p-3 rounded-lg text-xs font-mono overflow-x-auto bg-[#04060A]/70 text-text-main border border-border-dark/45 max-h-40 leading-relaxed select-text">
-                      {selectedCall.args.code}
-                    </pre>
+              {/* Arguments Block */}
+              {selectedCall.args && (
+                <div className="p-3 border-b border-white/[0.05] bg-[#0E121B]/50">
+                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    Input Parameters
                   </div>
-                )}
+                  <pre className="text-xs font-mono text-slate-300 overflow-x-auto max-h-36 select-text whitespace-pre-wrap">
+                    {typeof selectedCall.args === 'object' ? JSON.stringify(selectedCall.args, null, 2) : selectedCall.args}
+                  </pre>
+                </div>
+              )}
 
-                {selectedCall.name === 'browse_web' && selectedCall.args && (
-                  <div className="space-y-1.5 text-left bg-card/15 border border-border-dark/40 rounded-lg p-2.5">
-                    <div className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Browser Task</div>
-                    <div className="text-xs font-semibold text-text-main">
-                      URL: <a href={selectedCall.args.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{selectedCall.args.url}</a>
-                    </div>
-                    {selectedCall.args.instructions && (
-                      <div className="text-[11px] text-text-muted mt-1 font-mono">Instructions: {selectedCall.args.instructions}</div>
-                    )}
-                  </div>
-                )}
-
-                {selectedCall.name === 'write_file' && selectedCall.args && (
-                  <div className="space-y-1.5 text-left">
-                    <div className="text-[10px] font-bold text-text-muted uppercase tracking-wider">File Path</div>
-                    <div className="text-xs font-mono text-text-main bg-[#04060A]/70 border border-border-dark/45 p-2 rounded-lg">{selectedCall.args.path}</div>
-                  </div>
-                )}
-
-                {/* Outputs / Errors */}
-                {hasOutput(selectedCall) && (
-                  <div className="space-y-1.5 text-left">
-                    <div className="flex items-center gap-1 text-[10px] font-bold text-text-muted uppercase tracking-wider">
-                      <Eye className="w-3.5 h-3.5 text-primary" />
-                      <span>Console Output</span>
-                    </div>
-                    <pre className={`p-3 rounded-lg text-xs font-mono overflow-x-auto max-h-52 leading-relaxed border ${
-                      selectedCall.error 
-                        ? 'bg-rose-950/25 text-rose-300 border-rose-500/20' 
-                        : selectedCall.status === 'running'
-                        ? 'bg-[#04060A]/70 text-text-muted border-border-dark/35 animate-pulse'
-                        : 'bg-[#04060A]/70 text-[#9ECE6A] border-border-dark/40'
-                    }`}>
-                      {selectedCall.status === 'running' 
-                        ? 'Executing task... Waiting for stdout/stderr.' 
-                        : linkify(getOutputPreview(selectedCall))
-                      }
-                    </pre>
-                  </div>
-                )}
+              {/* Output / Console Block */}
+              <div className="p-3 bg-[#08090E]">
+                <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                  <span>Terminal / Execution Result</span>
+                  {selectedCall.status === 'running' && (
+                    <span className="text-indigo-400 animate-pulse">Running...</span>
+                  )}
+                </div>
+                <pre className={`p-3 rounded-lg text-xs font-mono overflow-x-auto max-h-56 leading-relaxed border ${
+                  selectedCall.error
+                    ? 'bg-rose-950/20 text-rose-300 border-rose-500/20'
+                    : selectedCall.status === 'running'
+                    ? 'bg-indigo-950/10 text-slate-400 border-indigo-500/20 animate-pulse'
+                    : 'bg-[#0B0D14] text-emerald-300/90 border-white/[0.06]'
+                }`}>
+                  {selectedCall.status === 'running'
+                    ? 'Executing action inside sandbox container... Waiting for output.'
+                    : (linkify(getOutputPreview(selectedCall)) || 'Completed with no stdout return.')
+                  }
+                </pre>
               </div>
             </div>
           </motion.div>
@@ -278,3 +273,5 @@ export const ToolCallsGroup: React.FC<ToolCallsGroupProps> = ({ toolCalls }) => 
     </div>
   );
 };
+
+export default ToolCallsGroup;
