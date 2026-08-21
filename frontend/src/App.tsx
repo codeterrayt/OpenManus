@@ -50,13 +50,18 @@ function App() {
     return () => el.removeEventListener('scroll', onScroll);
   }, []);
 
+  const scrollRaf = useRef<number | null>(null);
+
   const scrollToBottom = (force = false, behavior: ScrollBehavior = 'smooth') => {
     if (force || !userScrolledUp.current) {
-      messagesEndRef.current?.scrollIntoView({ behavior });
-      if (force) {
-        userScrolledUp.current = false;
-        setShowScrollBottom(false);
-      }
+      if (scrollRaf.current) cancelAnimationFrame(scrollRaf.current);
+      scrollRaf.current = requestAnimationFrame(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior });
+        if (force) {
+          userScrolledUp.current = false;
+          setShowScrollBottom(false);
+        }
+      });
     }
   };
 
@@ -65,7 +70,9 @@ function App() {
   }, [activeSession?.history?.length]);
 
   useEffect(() => {
-    scrollToBottom(false, 'auto');
+    if (streamingContent) {
+      scrollToBottom(false, 'auto');
+    }
   }, [streamingContent]);
 
   const suggestions = [

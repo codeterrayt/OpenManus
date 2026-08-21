@@ -1511,21 +1511,30 @@ Before you call any browse_web action (except 'extract_text' or 'screenshot'), y
           for (const tc of delta.tool_calls) {
             const idx = tc.index ?? 0;
             if (!tcAccum[idx]) {
-              tcAccum[idx] = { id: tc.id || `call_${Date.now()}_${idx}`, type: 'function', function: { name: '', arguments: '' } };
+              tcAccum[idx] = { 
+                id: tc.id || `call_${Date.now()}_${idx}`, 
+                type: 'function', 
+                function: { name: '', arguments: '' },
+                _lastDraftEmit: 0 
+              };
             }
             const a = tcAccum[idx];
             if (tc.id)                  a.id                  = tc.id;
             if (tc.function?.name)      a.function.name      += tc.function.name;
             if (tc.function?.arguments) a.function.arguments += tc.function.arguments;
 
-            // Emit live tool draft as tokens arrive so UI immediately shows the active tool & code streaming
-            onEvent('tool_draft', {
-              id: a.id || `call_${idx}`,
-              tool: a.function.name,
-              argumentsDelta: tc.function?.arguments || '',
-              rawArguments: a.function.arguments,
-              index: idx,
-            });
+            const now = Date.now();
+            // Throttle draft emissions to at most once per 80ms to avoid overwhelming browser with tens of thousands of SSE messages
+            if (now - (a._lastDraftEmit || 0) >= 80 || !a._lastDraftEmit) {
+              a._lastDraftEmit = now;
+              onEvent('tool_draft', {
+                id: a.id || `call_${idx}`,
+                tool: a.function.name,
+                argumentsDelta: tc.function?.arguments || '',
+                rawArguments: a.function.arguments,
+                index: idx,
+              });
+            }
           }
         }
       }

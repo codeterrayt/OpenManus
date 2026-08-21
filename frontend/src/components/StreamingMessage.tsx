@@ -207,14 +207,14 @@ export const StreamingMessage: React.FC = () => {
                         setRightPanelTab('files');
                         setRightPanelCollapsed(false);
                       }}
-                      className="text-[10px] font-semibold text-indigo-300 hover:text-white bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/40 px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer font-mono"
+                      className="text-[11px] font-medium text-indigo-300 hover:text-white bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer font-sans"
                     >
-                      <Sparkles className="w-3 h-3 text-indigo-400 animate-spin" />
-                      <span>View Live in VS Code →</span>
+                      <Loader2 className="w-3 h-3 animate-spin text-indigo-400 shrink-0" />
+                      <span>View</span>
                     </button>
                   )}
 
-                  <div className="flex items-center gap-1 text-[11px] font-semibold text-indigo-400 bg-indigo-500/20 border border-indigo-500/40 px-2.5 py-0.5 rounded-full font-mono">
+                  <div className="flex items-center gap-1.5 text-[11px] font-semibold text-indigo-400 bg-indigo-500/20 border border-indigo-500/40 px-2.5 py-0.5 rounded-full font-mono">
                     <Loader2 className="w-3 h-3 animate-spin" />
                     <span>Executing</span>
                   </div>
