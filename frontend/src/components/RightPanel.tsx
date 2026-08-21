@@ -124,21 +124,29 @@ export const RightPanel: React.FC = () => {
 
   React.useEffect(() => {
     if (selectedFile && activeSession?.id) {
+      // If this file is currently being actively streamed/written, use in-memory stream!
+      if (activeStreamingFile === selectedFile) {
+        setIsLoadingContent(false);
+        return;
+      }
+
+      const cleanPath = selectedFile.replace(/^\/?workspace\/?/, '').replace(/^\//, '');
       setIsLoadingContent(true);
-      api.getFileContent(activeSession.id, selectedFile)
+      api.getFileContent(activeSession.id, cleanPath)
         .then((data) => {
           setFileContent(data.content);
           setIsLoadingContent(false);
         })
         .catch((err) => {
           console.error('[RightPanel] Failed to fetch file content:', err);
-          setFileContent(`Error loading file: ${err.message}`);
+          // If we already have content (from streaming or cache), preserve it!
+          setFileContent(prev => prev || `Error loading file: ${err.message}`);
           setIsLoadingContent(false);
         });
-    } else {
+    } else if (!selectedFile) {
       setFileContent('');
     }
-  }, [selectedFile, activeSession?.id]);
+  }, [selectedFile, activeSession?.id, activeStreamingFile]);
 
   const metrics = useMemo(() => {
     if (!activeSession) return { inputTokens: 0, outputTokens: 0, duration: '0s', stepsCount: 0 };

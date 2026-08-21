@@ -706,15 +706,32 @@ export const useChatStore = create<ChatState>((set, get) => ({
                     ? formatToolActivity(stillRunning[0].name, stillRunning[0].args)
                     : `Completed ${tool} (${durationSec}s)`;
 
+                  // If this was a writeFile operation, keep the written code in fileContent
+                  let writtenFileState: any = {};
+                  if ((tool === 'writeFile' || tool === 'write_file') && toolCall?.args?.path) {
+                    const writtenFile = toolCall.args.path.replace(/^\/?workspace\/?/, '').replace(/^\//, '');
+                    writtenFileState = {
+                      selectedFile: writtenFile,
+                      fileContent: toolCall.args.content || '',
+                      activeStreamingFile: null,
+                      activeStreamingCode: ''
+                    };
+                  } else {
+                    writtenFileState = {
+                      activeStreamingFile: null,
+                      activeStreamingCode: ''
+                    };
+                  }
+
                   return {
                     activeToolCalls: updatedTools,
-                    activeStreamingFile: null,
                     streamingThoughts: nextThoughts,
                     activeSession: {
                       ...currentSession,
                       history: updatedHistory,
                       logs: updatedLogs
-                    }
+                    },
+                    ...writtenFileState
                   };
                 }
 
@@ -723,10 +740,26 @@ export const useChatStore = create<ChatState>((set, get) => ({
                   ? formatToolActivity(stillRunning[0].name, stillRunning[0].args)
                   : `Completed ${tool} (${durationSec}s)`;
 
+                let writtenFileState: any = {};
+                if ((tool === 'writeFile' || tool === 'write_file') && toolCall?.args?.path) {
+                  const writtenFile = toolCall.args.path.replace(/^\/?workspace\/?/, '').replace(/^\//, '');
+                  writtenFileState = {
+                    selectedFile: writtenFile,
+                    fileContent: toolCall.args.content || '',
+                    activeStreamingFile: null,
+                    activeStreamingCode: ''
+                  };
+                } else {
+                  writtenFileState = {
+                    activeStreamingFile: null,
+                    activeStreamingCode: ''
+                  };
+                }
+
                 return { 
                   activeToolCalls: updatedTools,
-                  activeStreamingFile: null,
-                  streamingThoughts: nextThoughts
+                  streamingThoughts: nextThoughts,
+                  ...writtenFileState
                 };
               });
               break;

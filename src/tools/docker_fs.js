@@ -90,74 +90,105 @@ async function execInContainer(container, shellCmd, timeoutMs = 15_000) {
   });
 }
 
+/** Helper to ensure paths resolve inside /workspace */
+function normalizeWorkspacePath(p) {
+  if (!p) return '/workspace';
+  if (p.startsWith('/workspace/')) return p;
+  if (p === '/workspace') return p;
+  const clean = p.replace(/^\.?\//, '');
+  return `/workspace/${clean}`;
+}
+
 /** Write content to a file via heredoc — handles multi-line/special chars */
 function writeCmd(path, content) {
   // Base64 encode content to avoid heredoc escaping issues
-  const normalized = typeof content === 'string' ? content.replace(/\r\n/g, '\n') : content;
+  const normalized = typeof content === 'string' ? content.replace(/\r\n/g, '\n') : String(content);
   const b64 = Buffer.from(normalized, 'utf-8').toString('base64');
-  return `echo ${b64} | base64 -d > ${path}`;
+  return `echo ${b64} | base64 -d > "${path}"`;
 }
 
 // ─── Exported tool functions ──────────────────────────────────────────────────
 
 export async function readFile({ container = SANDBOX, path }) {
   if (!path) return { error: 'path is required' };
-  const result = await execInContainer(container, `cat "${path}"`);
-  return { ...result, path, container };
+  const targetPath = normalizeWorkspacePath(path);
+  const result = await execInContainer(container, `cat "${targetPath}"`);
+  return { ...result, path: targetPath, container };
 }
 
 export async function writeFile({ container = SANDBOX, path, content }) {
   if (!path)    return { error: 'path is required' };
   if (content == null) return { error: 'content is required' };
+  const targetPath = normalizeWorkspacePath(path);
   // Ensure parent dir exists
-  const dir = path.substring(0, path.lastIndexOf('/'));
-  if (dir) await execInContainer(container, `mkdir -p "${dir}"`);
-  const result = await execInContainer(container, writeCmd(path, content));
-  return { ...result, path, container, note: result.exitCode === 0 ? `File written: ${path}` : 'Write failed' };
+  const dir = targetPath.substring(0, targetPath.lastIndexOf('/'));
+  if (dir && dir !== '/workspace') {
+    await execInContainer(container, `mkdir -p "${dir}"`);
+  }
+  const result = await execInContainer(container, writeCmd(targetPath, content));
+  return { 
+    ...result, 
+    path: targetPath, 
+    container, 
+    note: result.exitCode === 0 ? `File written: ${targetPath}` : `Write failed: ${result.stderr || 'unknown error'}` 
+  };
 }
 
 export async function appendFile({ container = SANDBOX, path, content }) {
   if (!path)    return { error: 'path is required' };
   if (content == null) return { error: 'content is required' };
-  const normalized = typeof content === 'string' ? content.replace(/\r\n/g, '\n') : content;
+  const targetPath = normalizeWorkspacePath(path);
+  const dir = targetPath.substring(0, targetPath.lastIndexOf('/'));
+  if (dir && dir !== '/workspace') {
+    await execInContainer(container, `mkdir -p "${dir}"`);
+  }
+  const normalized = typeof content === 'string' ? content.replace(/\r\n/g, '\n') : String(content);
   const b64 = Buffer.from(normalized, 'utf-8').toString('base64');
-  const result = await execInContainer(container, `echo ${b64} | base64 -d >> "${path}"`);
-  return { ...result, path, container };
+  const result = await execInContainer(container, `echo ${b64} | base64 -d >> "${targetPath}"`);
+  return { ...result, path: targetPath, container };
 }
 
 export async function listDir({ container = SANDBOX, path = '/workspace' }) {
-  const result = await execInContainer(container, `ls -la "${path}" 2>&1 && echo "---" && du -sh "${path}" 2>/dev/null`);
-  return { ...result, path, container };
+  const targetPath = normalizeWorkspacePath(path);
+  const result = await execInContainer(container, `ls -la "${targetPath}" 2>&1 && echo "---" && du -sh "${targetPath}" 2>/dev/null`);
+  return { ...result, path: targetPath, container };
 }
 
 export async function deleteFile({ container = SANDBOX, path }) {
   if (!path) return { error: 'path is required' };
-  const result = await execInContainer(container, `rm -rf "${path}"`);
-  return { ...result, path, container, note: result.exitCode === 0 ? `Deleted: ${path}` : 'Delete failed' };
+  const targetPath = normalizeWorkspacePath(path);
+  const result = await execInContainer(container, `rm -rf "${targetPath}"`);
+  return { ...result, path: targetPath, container, note: result.exitCode === 0 ? `Deleted: ${targetPath}` : 'Delete failed' };
 }
 
 export async function makeDir({ container = SANDBOX, path }) {
   if (!path) return { error: 'path is required' };
-  const result = await execInContainer(container, `mkdir -p "${path}"`);
-  return { ...result, path, container };
+  const targetPath = normalizeWorkspacePath(path);
+  const result = await execInContainer(container, `mkdir -p "${targetPath}"`);
+  return { ...result, path: targetPath, container };
 }
 
 export async function moveFile({ container = SANDBOX, src, dest }) {
   if (!src || !dest) return { error: 'src and dest are required' };
-  const result = await execInContainer(container, `mv "${src}" "${dest}"`);
-  return { ...result, src, dest, container };
+  const targetSrc = normalizeWorkspacePath(src);
+  const targetDest = normalizeWorkspacePath(dest);
+  const result = await execInContainer(container, `mv "${targetSrc}" "${targetDest}"`);
+  return { ...result, src: targetSrc, dest: targetDest, container };
 }
 
 export async function copyFile({ container = SANDBOX, src, dest }) {
   if (!src || !dest) return { error: 'src and dest are required' };
-  const result = await execInContainer(container, `cp -r "${src}" "${dest}"`);
-  return { ...result, src, dest, container };
+  const targetSrc = normalizeWorkspacePath(src);
+  const targetDest = normalizeWorkspacePath(dest);
+  const result = await execInContainer(container, `cp -r "${targetSrc}" "${targetDest}"`);
+  return { ...result, src: targetSrc, dest: targetDest, container };
 }
 
 export async function statFile({ container = SANDBOX, path }) {
   if (!path) return { error: 'path is required' };
-  const result = await execInContainer(container, `stat "${path}" 2>&1; echo "exists=$?"`);
-  return { ...result, path, container };
+  const targetPath = normalizeWorkspacePath(path);
+  const result = await execInContainer(container, `stat "${targetPath}" 2>&1; echo "exists=$?"`);
+  return { ...result, path: targetPath, container };
 }
 
 export async function findWorkspaceFiles(container = SANDBOX) {

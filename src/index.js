@@ -587,20 +587,21 @@ app.get('/sessions/:id/files', async (req, res) => {
 app.get('/sessions/:id/files/content', async (req, res) => {
   try {
     const { id } = req.params;
-    const { path } = req.query;
+    let { path } = req.query;
     if (!path) return res.status(400).json({ error: 'Path parameter is required' });
 
     const { rows } = await getPool().query('SELECT 1 FROM sessions WHERE id = $1', [id]);
     if (!rows.length) return res.status(404).json({ error: 'Session not found' });
 
-    if (path.includes('..') || path.startsWith('/') || path.startsWith('\\')) {
+    if (typeof path !== 'string' || path.includes('..')) {
       return res.status(400).json({ error: 'Invalid path' });
     }
 
-    const absPath = `/workspace/${path}`;
+    const cleanPath = path.replace(/^\/?workspace\/?/, '').replace(/^\//, '');
+    const absPath = `/workspace/${cleanPath}`;
     const result = await readFile({ path: absPath });
     if (result.exitCode !== 0) {
-      return res.status(500).json({ error: result.stderr || 'Failed to read file' });
+      return res.status(404).json({ error: result.stderr || 'File not found or failed to read' });
     }
 
     res.json({ content: result.stdout });
