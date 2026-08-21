@@ -268,10 +268,385 @@ function pushFrameToWorker(jpegBuffer: ArrayBuffer, timestamp: number) {
   }).catch(() => { /* corrupt frame — ignore */ });
 }
 
+const handleStreamEvent = (
+  event: string, 
+  data: any, 
+  get: () => ChatState, 
+  set: (fn: Partial<ChatState> | ((state: ChatState) => Partial<ChatState>)) => void
+) => {
+  const currentSession = get().activeSession;
+  
+  switch (event) {
+    case 'session_created': {
+      const { sessionId } = data;
+      localStorage.setItem('openmanus_active_session_id', sessionId);
+      set({ activeSessionId: sessionId });
+      if (currentSession) {
+        set({ 
+          activeSession: { ...currentSession, id: sessionId } 
+        });
+      }
+      break;
+    }
+    case 'summarizing': {
+      set({ isSummarizing: true, streamingThoughts: '📝 Summarizing conversation to save context...' });
+      break;
+    }
+    case 'summary_created': {
+      set({ isSummarizing: false, lastSummary: data.summary });
+      break;
+    }
+    case 'step': {
+      const { step, total } = data;
+      set({ streamingSteps: { current: step, total } });
+      break;
+    }
+    case 'llm_thinking': {
+      const { step } = data;
+      set({ 
+        streamingThoughts: `Executing step ${step}... Agent is planning next action.`,
+        activeToolCalls: {},
+        lastThoughts: '',
+        streamingReasoning: ''
+      });
+      break;
+    }
+    case 'text_delta': {
+      const { text, isReasoning } = data;
+      if (isReasoning) {
+        set(state => ({
+          streamingReasoning: state.streamingReasoning + text
+        }));
+      } else {
+        set(state => ({
+          streamingContent: state.streamingContent + text
+        }));
+      }
+      break;
+    }
+    case 'clear_stream': {
+      const { preamble } = data;
+      set(state => ({ 
+        lastThoughts: preamble || state.streamingReasoning || state.streamingContent || state.lastThoughts,
+        streamingReasoning: '',
+        streamingContent: '' 
+      }));
+      break;
+    }
+    case 'tool_draft': {
+      const { id, tool, rawArguments } = data;
+      const path = extractPartialJsonField(rawArguments, 'path');
+      const content = extractPartialJsonField(rawArguments, 'content');
+      const code = extractPartialJsonField(rawArguments, 'code');
+      const lang = extractPartialJsonField(rawArguments, 'lang');
+
+      const liveArgs: any = {};
+      if (path) liveArgs.path = path;
+      if (content) liveArgs.content = content;
+      if (code) liveArgs.code = code;
+      if (lang) liveArgs.lang = lang;
+
+      set(state => {
+        const updatedTools = {
+          ...state.activeToolCalls,
+          [id]: {
+            id,
+            name: tool || state.activeToolCalls[id]?.name || 'tool',
+            args: liveArgs,
+            status: 'running' as const,
+            startTime: state.activeToolCalls[id]?.startTime || Date.now()
+          }
+        };
+
+        const toolName = tool || state.activeToolCalls[id]?.name || '';
+        const activityDesc = formatToolActivity(toolName, liveArgs);
+
+        // Auto-switch to files tab and stream code directly into VS Code Web / Monaco editor!
+        if ((toolName === 'writeFile' || toolName === 'write_file' || toolName.includes('write')) && path) {
+          const relPath = path.replace(/^\/?workspace\/?/, '').replace(/^\//, '');
+          localStorage.setItem('openmanus_right_panel_collapsed', 'false');
+          const targetWidth = Math.max(state.rightPanelWidth, 520);
+          localStorage.setItem('openmanus_right_panel_width', String(targetWidth));
+
+          return {
+            activeToolCalls: updatedTools,
+            streamingThoughts: activityDesc,
+            rightPanelTab: 'files' as const,
+            rightPanelCollapsed: false,
+            rightPanelWidth: targetWidth,
+            selectedFile: relPath,
+            activeStreamingFile: relPath,
+            activeStreamingCode: content,
+            fileContent: content
+          };
+        }
+
+        return {
+          activeToolCalls: updatedTools,
+          streamingThoughts: activityDesc
+        };
+      });
+      break;
+    }
+    case 'tool_start': {
+      const { id, tool, args } = data;
+      const activityDesc = formatToolActivity(tool, args);
+      set(state => {
+        const updatedTools = {
+          ...state.activeToolCalls,
+          [id]: {
+            id,
+            name: tool,
+            args,
+            status: 'running' as const,
+            startTime: state.activeToolCalls[id]?.startTime || Date.now()
+          }
+        };
+
+        let extraState: any = {};
+        if ((tool === 'writeFile' || tool === 'write_file' || tool.includes('write')) && args?.path) {
+          const relPath = args.path.replace(/^\/?workspace\/?/, '').replace(/^\//, '');
+          localStorage.setItem('openmanus_right_panel_collapsed', 'false');
+          const targetWidth = Math.max(state.rightPanelWidth, 520);
+          localStorage.setItem('openmanus_right_panel_width', String(targetWidth));
+
+          extraState = {
+            rightPanelTab: 'files' as const,
+            rightPanelCollapsed: false,
+            rightPanelWidth: targetWidth,
+            selectedFile: relPath,
+            activeStreamingFile: relPath,
+            activeStreamingCode: args.content || '',
+            fileContent: args.content || ''
+          };
+        } else if (tool === 'browse_web') {
+          extraState = {
+            rightPanelTab: 'browser' as const,
+            rightPanelCollapsed: false
+          };
+        }
+
+        if (currentSession) {
+          const updatedHistory = [...currentSession.history];
+          const lastMsg = updatedHistory[updatedHistory.length - 1];
+
+          if (lastMsg && lastMsg.role === 'assistant') {
+            const toolCalls = lastMsg.tool_calls || [];
+            const exists = toolCalls.some(tc => tc.id === id);
+            if (!exists) {
+              lastMsg.tool_calls = [...toolCalls, {
+                id,
+                type: 'function' as const,
+                function: { name: tool, arguments: JSON.stringify(args) }
+              }];
+            }
+          } else {
+            updatedHistory.push({
+              role: 'assistant' as const,
+              content: state.lastThoughts || null,
+              tool_calls: [{
+                id,
+                type: 'function' as const,
+                function: { name: tool, arguments: JSON.stringify(args) }
+              }]
+            });
+          }
+
+          return {
+            activeToolCalls: updatedTools,
+            streamingThoughts: activityDesc,
+            activeSession: {
+              ...currentSession,
+              history: updatedHistory
+            },
+            ...extraState
+          };
+        }
+
+        return {
+          activeToolCalls: updatedTools,
+          streamingThoughts: activityDesc,
+          ...extraState
+        };
+      });
+      break;
+    }
+    case 'tool_result': {
+      const { id, tool, result, raw, error } = data;
+      const toolCall = get().activeToolCalls[id];
+      const duration = toolCall ? Date.now() - toolCall.startTime : 0;
+      const durationSec = (duration / 1000).toFixed(1);
+      
+      set(state => {
+        // Update live tool call representation
+        const updatedTools = { ...state.activeToolCalls };
+        const isError = !!error || 
+          (result && typeof result === 'object' && (
+            result.exitCode > 0 || 
+            result.exitCode === -1 || 
+            !!result.error ||
+            (result.stderr && !result.stdout)
+          ));
+
+        if (updatedTools[id]) {
+          updatedTools[id] = {
+            ...updatedTools[id],
+            status: isError ? 'error' : 'success',
+            result,
+            error: error || (result && typeof result === 'object' ? (result.error || result.stderr) : undefined),
+            duration
+          };
+        }
+
+        const stillRunning = Object.values(updatedTools).filter(t => t.status === 'running');
+        const nextThoughts = stillRunning.length > 0 
+          ? formatToolActivity(stillRunning[0].name, stillRunning[0].args)
+          : `Completed ${tool} (${durationSec}s)`;
+
+        // If this was a writeFile operation, keep the written code in fileContent
+        let writtenFileState: any = {};
+        if ((tool === 'writeFile' || tool === 'write_file') && toolCall?.args?.path) {
+          const writtenFile = toolCall.args.path.replace(/^\/?workspace\/?/, '').replace(/^\//, '');
+          writtenFileState = {
+            selectedFile: writtenFile,
+            fileContent: toolCall.args.content || '',
+            activeStreamingFile: null,
+            activeStreamingCode: ''
+          };
+        } else {
+          writtenFileState = {
+            activeStreamingFile: null,
+            activeStreamingCode: ''
+          };
+        }
+
+        // Inject tool call result into the active session history & logs
+        if (currentSession) {
+          const updatedHistory = [...currentSession.history];
+          
+          // Check if this tool role message is already added
+          const alreadyAdded = updatedHistory.some(
+            m => m.role === 'tool' && m.tool_call_id === id
+          );
+
+          if (!alreadyAdded) {
+            updatedHistory.push({
+              role: 'tool',
+              tool_call_id: id,
+              content: raw
+            });
+          }
+
+          // Create new tool log item
+          const logItem: ToolLog = {
+            step: state.streamingSteps?.current || 0,
+            tool,
+            args: toolCall?.args || {},
+            result: raw,
+            ts: new Date().toISOString()
+          };
+          
+          const updatedLogs = [...currentSession.logs, logItem];
+
+          return {
+            activeToolCalls: updatedTools,
+            streamingThoughts: nextThoughts,
+            activeSession: {
+              ...currentSession,
+              history: updatedHistory,
+              logs: updatedLogs
+            },
+            ...writtenFileState
+          };
+        }
+
+        return { 
+          activeToolCalls: updatedTools,
+          streamingThoughts: nextThoughts,
+          ...writtenFileState
+        };
+      });
+      break;
+    }
+    case 'answer': {
+      const { text } = data;
+      set({ streamingContent: text });
+      break;
+    }
+    case 'done': {
+      const { result } = data;
+      set(() => {
+        if (currentSession) {
+          const updatedHistory = [...currentSession.history];
+          
+          // Check if last message is assistant's done text
+          const hasAssistantAnswer = updatedHistory.some(
+            m => m.role === 'assistant' && m.content === result
+          );
+
+          if (!hasAssistantAnswer) {
+            updatedHistory.push({
+              role: 'assistant',
+              content: result
+            });
+          }
+
+          return {
+            isStreaming: false,
+            streamingContent: '',
+            streamingThoughts: '',
+            streamingReasoning: '',
+            lastThoughts: '',
+            activeSession: {
+              ...currentSession,
+              status: 'done',
+              result,
+              history: updatedHistory,
+              updated_at: new Date().toISOString()
+            }
+          };
+        }
+        return { isStreaming: false, streamingContent: '', streamingThoughts: '', streamingReasoning: '', lastThoughts: '' };
+      });
+      // Reload sessions to refresh the sidebar
+      get().fetchSessions();
+      break;
+    }
+    case 'error': {
+      const { message } = data;
+      set(() => {
+        if (currentSession) {
+          const updatedHistory = [...currentSession.history, {
+            role: 'assistant' as const,
+            content: `Error: ${message}`
+          }];
+          return {
+            isStreaming: false,
+            streamingContent: '',
+            streamingThoughts: '',
+            streamingReasoning: '',
+            lastThoughts: '',
+            activeSession: {
+              ...currentSession,
+              status: 'failed',
+              result: message,
+              history: updatedHistory,
+              updated_at: new Date().toISOString()
+            }
+          };
+        }
+        return { isStreaming: false, streamingContent: '', streamingThoughts: '', streamingReasoning: '', lastThoughts: '' };
+      });
+      get().fetchSessions();
+      break;
+    }
+  }
+};
+
 export const useChatStore = create<ChatState>((set, get) => ({
 
   sessions: [],
-  activeSessionId: null,
+  activeSessionId: localStorage.getItem('openmanus_active_session_id') || null,
   activeSession: null,
   isLoadingSessions: false,
   isLoadingActiveSession: false,
@@ -316,6 +691,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
     try {
       const data = await api.getSessions();
       set({ sessions: data, isLoadingSessions: false });
+
+      // If no active session is loaded, restore the last active session from localStorage
+      const savedId = localStorage.getItem('openmanus_active_session_id');
+      if (savedId && !get().activeSession) {
+        const found = data.some(s => s.id === savedId);
+        if (found) {
+          get().selectSession(savedId);
+        }
+      }
     } catch (err) {
       console.error('[Store] Error loading sessions:', err);
       set({ isLoadingSessions: false });
@@ -366,7 +750,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   selectSession: async (id: string) => {
+    if (activeAbortController) {
+      activeAbortController.abort();
+      activeAbortController = null;
+    }
+
+    localStorage.setItem('openmanus_active_session_id', id);
     set({ isLoadingActiveSession: true, activeSessionId: id });
+
     try {
       const data = await api.getSession(id);
       set({ 
@@ -377,6 +768,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
         activeToolCalls: {}
       });
       get().connectBrowserWS();
+
+      // If the session is currently running in the background, reconnect to its live SSE event stream!
+      if (data && data.status === 'running') {
+        activeAbortController = new AbortController();
+        set({ isStreaming: true, streamingThoughts: 'Reconnected to running agent...' });
+        api.listenSessionEvents(
+          id,
+          (event, eventData) => handleStreamEvent(event, eventData, get, set),
+          activeAbortController.signal
+        );
+      }
     } catch (err) {
       console.error('[Store] Error loading session detail:', err);
       set({ isLoadingActiveSession: false });
@@ -387,6 +789,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (get().isStreaming) {
       get().abortChat();
     }
+    localStorage.removeItem('openmanus_active_session_id');
     get().disconnectBrowserWS();
     set({
       activeSessionId: null,
@@ -458,386 +861,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       get().connectBrowserWS();
       await api.streamAgent(
         goal,
-        (event, data) => {
-          const currentSession = get().activeSession;
-          
-          switch (event) {
-            case 'session_created': {
-              const { sessionId } = data;
-              set({ activeSessionId: sessionId });
-              if (currentSession) {
-                set({ 
-                  activeSession: { ...currentSession, id: sessionId } 
-                });
-              }
-              break;
-            }
-            case 'summarizing': {
-              set({ isSummarizing: true, streamingThoughts: '📝 Summarizing conversation to save context...' });
-              break;
-            }
-            case 'summary_created': {
-              set({ isSummarizing: false, lastSummary: data.summary });
-              break;
-            }
-            case 'step': {
-              const { step, total } = data;
-              set({ streamingSteps: { current: step, total } });
-              break;
-            }
-            case 'llm_thinking': {
-              const { step } = data;
-              set({ 
-                streamingThoughts: `Executing step ${step}... Agent is planning next action.`,
-                activeToolCalls: {},
-                lastThoughts: '',
-                streamingReasoning: ''
-              });
-              break;
-            }
-            case 'text_delta': {
-              const { text, isReasoning } = data;
-              if (isReasoning) {
-                set(state => ({
-                  streamingReasoning: state.streamingReasoning + text
-                }));
-              } else {
-                set(state => ({
-                  streamingContent: state.streamingContent + text
-                }));
-              }
-              break;
-            }
-            case 'clear_stream': {
-              const { preamble } = data;
-              set(state => ({ 
-                lastThoughts: preamble || state.streamingReasoning || state.streamingContent || state.lastThoughts,
-                streamingReasoning: '',
-                streamingContent: '' 
-              }));
-              break;
-            }
-            case 'tool_draft': {
-              const { id, tool, rawArguments } = data;
-              const path = extractPartialJsonField(rawArguments, 'path');
-              const content = extractPartialJsonField(rawArguments, 'content');
-              const code = extractPartialJsonField(rawArguments, 'code');
-              const lang = extractPartialJsonField(rawArguments, 'lang');
-
-              const liveArgs: any = {};
-              if (path) liveArgs.path = path;
-              if (content) liveArgs.content = content;
-              if (code) liveArgs.code = code;
-              if (lang) liveArgs.lang = lang;
-
-              set(state => {
-                const updatedTools = {
-                  ...state.activeToolCalls,
-                  [id]: {
-                    id,
-                    name: tool || state.activeToolCalls[id]?.name || 'tool',
-                    args: liveArgs,
-                    status: 'running' as const,
-                    startTime: state.activeToolCalls[id]?.startTime || Date.now()
-                  }
-                };
-
-                const toolName = tool || state.activeToolCalls[id]?.name || '';
-                const activityDesc = formatToolActivity(toolName, liveArgs);
-
-                // Auto-switch to files tab and stream code directly into VS Code Web / Monaco editor!
-                if ((toolName === 'writeFile' || toolName === 'write_file') && path) {
-                  const relPath = path.replace(/^\/?workspace\/?/, '').replace(/^\//, '');
-                  return {
-                    activeToolCalls: updatedTools,
-                    streamingThoughts: activityDesc,
-                    rightPanelTab: 'files' as const,
-                    rightPanelCollapsed: false,
-                    selectedFile: relPath,
-                    activeStreamingFile: relPath,
-                    activeStreamingCode: content,
-                    fileContent: content
-                  };
-                }
-
-                return {
-                  activeToolCalls: updatedTools,
-                  streamingThoughts: activityDesc
-                };
-              });
-              break;
-            }
-            case 'tool_start': {
-              const { id, tool, args } = data;
-              const activityDesc = formatToolActivity(tool, args);
-              set(state => {
-                const updatedTools = {
-                  ...state.activeToolCalls,
-                  [id]: {
-                    id,
-                    name: tool,
-                    args,
-                    status: 'running' as const,
-                    startTime: state.activeToolCalls[id]?.startTime || Date.now()
-                  }
-                };
-
-                let extraState: any = {};
-                if ((tool === 'writeFile' || tool === 'write_file') && args?.path) {
-                  const relPath = args.path.replace(/^\/?workspace\/?/, '').replace(/^\//, '');
-                  extraState = {
-                    rightPanelTab: 'files' as const,
-                    rightPanelCollapsed: false,
-                    selectedFile: relPath,
-                    activeStreamingFile: relPath,
-                    activeStreamingCode: args.content || '',
-                    fileContent: args.content || ''
-                  };
-                } else if (tool === 'browse_web') {
-                  extraState = {
-                    rightPanelTab: 'browser' as const,
-                    rightPanelCollapsed: false
-                  };
-                }
-
-                if (currentSession) {
-                  const updatedHistory = [...currentSession.history];
-                  const lastMsg = updatedHistory[updatedHistory.length - 1];
-
-                  if (lastMsg && lastMsg.role === 'assistant') {
-                    const toolCalls = lastMsg.tool_calls || [];
-                    const exists = toolCalls.some(tc => tc.id === id);
-                    if (!exists) {
-                      lastMsg.tool_calls = [...toolCalls, {
-                        id,
-                        type: 'function' as const,
-                        function: { name: tool, arguments: JSON.stringify(args) }
-                      }];
-                    }
-                  } else {
-                    updatedHistory.push({
-                      role: 'assistant' as const,
-                      content: state.lastThoughts || null,
-                      tool_calls: [{
-                        id,
-                        type: 'function' as const,
-                        function: { name: tool, arguments: JSON.stringify(args) }
-                      }]
-                    });
-                  }
-
-                  return {
-                    activeToolCalls: updatedTools,
-                    streamingThoughts: activityDesc,
-                    activeSession: {
-                      ...currentSession,
-                      history: updatedHistory
-                    },
-                    ...extraState
-                  };
-                }
-
-                return {
-                  activeToolCalls: updatedTools,
-                  streamingThoughts: activityDesc,
-                  ...extraState
-                };
-              });
-              break;
-            }
-            case 'tool_result': {
-              const { id, tool, result, raw, error } = data;
-              const toolCall = get().activeToolCalls[id];
-              const duration = toolCall ? Date.now() - toolCall.startTime : 0;
-              const durationSec = (duration / 1000).toFixed(1);
-              
-              set(state => {
-                // Update live tool call representation
-                const updatedTools = { ...state.activeToolCalls };
-                const isError = !!error || 
-                  (result && typeof result === 'object' && (
-                    result.exitCode > 0 || 
-                    result.exitCode === -1 || 
-                    !!result.error ||
-                    (result.stderr && !result.stdout)
-                  ));
-
-                if (updatedTools[id]) {
-                  updatedTools[id] = {
-                    ...updatedTools[id],
-                    status: isError ? 'error' : 'success',
-                    result,
-                    error: error || (result && typeof result === 'object' ? (result.error || result.stderr) : undefined),
-                    duration
-                  };
-                }
-
-                // Inject tool call result into the active session history & logs
-                if (currentSession) {
-                  const updatedHistory = [...currentSession.history];
-                  
-                  // Check if this tool role message is already added
-                  const alreadyAdded = updatedHistory.some(
-                    m => m.role === 'tool' && m.tool_call_id === id
-                  );
-
-                  if (!alreadyAdded) {
-                    updatedHistory.push({
-                      role: 'tool',
-                      tool_call_id: id,
-                      content: raw
-                    });
-                  }
-
-                  // Create new tool log item
-                  const logItem: ToolLog = {
-                    step: state.streamingSteps?.current || 0,
-                    tool,
-                    args: toolCall?.args || {},
-                    result: raw,
-                    ts: new Date().toISOString()
-                  };
-                  
-                  const updatedLogs = [...currentSession.logs, logItem];
-
-                  // Count how many tools are still running
-                  const stillRunning = Object.values(updatedTools).filter(t => t.status === 'running');
-                  const nextThoughts = stillRunning.length > 0 
-                    ? formatToolActivity(stillRunning[0].name, stillRunning[0].args)
-                    : `Completed ${tool} (${durationSec}s)`;
-
-                  // If this was a writeFile operation, keep the written code in fileContent
-                  let writtenFileState: any = {};
-                  if ((tool === 'writeFile' || tool === 'write_file') && toolCall?.args?.path) {
-                    const writtenFile = toolCall.args.path.replace(/^\/?workspace\/?/, '').replace(/^\//, '');
-                    writtenFileState = {
-                      selectedFile: writtenFile,
-                      fileContent: toolCall.args.content || '',
-                      activeStreamingFile: null,
-                      activeStreamingCode: ''
-                    };
-                  } else {
-                    writtenFileState = {
-                      activeStreamingFile: null,
-                      activeStreamingCode: ''
-                    };
-                  }
-
-                  return {
-                    activeToolCalls: updatedTools,
-                    streamingThoughts: nextThoughts,
-                    activeSession: {
-                      ...currentSession,
-                      history: updatedHistory,
-                      logs: updatedLogs
-                    },
-                    ...writtenFileState
-                  };
-                }
-
-                const stillRunning = Object.values(updatedTools).filter(t => t.status === 'running');
-                const nextThoughts = stillRunning.length > 0 
-                  ? formatToolActivity(stillRunning[0].name, stillRunning[0].args)
-                  : `Completed ${tool} (${durationSec}s)`;
-
-                let writtenFileState: any = {};
-                if ((tool === 'writeFile' || tool === 'write_file') && toolCall?.args?.path) {
-                  const writtenFile = toolCall.args.path.replace(/^\/?workspace\/?/, '').replace(/^\//, '');
-                  writtenFileState = {
-                    selectedFile: writtenFile,
-                    fileContent: toolCall.args.content || '',
-                    activeStreamingFile: null,
-                    activeStreamingCode: ''
-                  };
-                } else {
-                  writtenFileState = {
-                    activeStreamingFile: null,
-                    activeStreamingCode: ''
-                  };
-                }
-
-                return { 
-                  activeToolCalls: updatedTools,
-                  streamingThoughts: nextThoughts,
-                  ...writtenFileState
-                };
-              });
-              break;
-            }
-            case 'answer': {
-              const { text } = data;
-              set({ streamingContent: text });
-              break;
-            }
-            case 'done': {
-              const { result } = data;
-              set(() => {
-                if (currentSession) {
-                  const updatedHistory = [...currentSession.history];
-                  
-                  // Check if last message is assistant's done text
-                  const hasAssistantAnswer = updatedHistory.some(
-                    m => m.role === 'assistant' && m.content === result
-                  );
-
-                  if (!hasAssistantAnswer) {
-                    updatedHistory.push({
-                      role: 'assistant',
-                      content: result
-                    });
-                  }
-
-                  return {
-                    isStreaming: false,
-                    streamingContent: '',
-                    streamingThoughts: '',
-                    streamingReasoning: '',
-                    lastThoughts: '',
-                    activeSession: {
-                      ...currentSession,
-                      status: 'done',
-                      result,
-                      history: updatedHistory,
-                      updated_at: new Date().toISOString()
-                    }
-                  };
-                }
-                return { isStreaming: false, streamingContent: '', streamingThoughts: '', streamingReasoning: '', lastThoughts: '' };
-              });
-              // Reload sessions to refresh the sidebar
-              get().fetchSessions();
-              break;
-            }
-            case 'error': {
-              const { message } = data;
-              set(() => {
-                if (currentSession) {
-                  const updatedHistory = [...currentSession.history, {
-                    role: 'assistant' as const,
-                    content: `Error: ${message}`
-                  }];
-                  return {
-                    isStreaming: false,
-                    streamingContent: '',
-                    streamingThoughts: '',
-                    streamingReasoning: '',
-                    lastThoughts: '',
-                    activeSession: {
-                      ...currentSession,
-                      status: 'failed',
-                      result: message,
-                      history: updatedHistory,
-                      updated_at: new Date().toISOString()
-                    }
-                  };
-                }
-                return { isStreaming: false, streamingContent: '', streamingThoughts: '', streamingReasoning: '', lastThoughts: '' };
-              });
-              get().fetchSessions();
-              break;
-            }
-          }
-        },
+        (event, data) => handleStreamEvent(event, data, get, set),
         activeAbortController.signal,
         sessionId,
         get().selectedAgent,

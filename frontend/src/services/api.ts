@@ -276,5 +276,53 @@ export const api = {
     const res = await fetch(`${API_BASE_URL}/sessions/${id}/files/content?path=${encodeURIComponent(path)}`);
     if (!res.ok) throw new Error('Failed to fetch file content');
     return res.json();
+  },
+
+  /**
+   * Listen / reconnect to an active session's live event stream
+   */
+  listenSessionEvents(
+    id: string,
+    onEvent: (event: string, data: any) => void,
+    signal?: AbortSignal
+  ): () => void {
+    const eventSource = new EventSource(`${API_BASE_URL}/sessions/${id}/events`);
+
+    const eventTypes = [
+      'session_created',
+      'summarizing',
+      'summary_created',
+      'step',
+      'llm_thinking',
+      'text_delta',
+      'clear_stream',
+      'tool_draft',
+      'tool_start',
+      'tool_result',
+      'answer',
+      'done',
+      'error'
+    ];
+
+    eventTypes.forEach(eventType => {
+      eventSource.addEventListener(eventType, (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          onEvent(eventType, data);
+        } catch {
+          onEvent(eventType, e.data);
+        }
+      });
+    });
+
+    if (signal) {
+      signal.addEventListener('abort', () => {
+        eventSource.close();
+      });
+    }
+
+    return () => {
+      eventSource.close();
+    };
   }
 };

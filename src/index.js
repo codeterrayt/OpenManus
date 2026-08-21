@@ -241,6 +241,34 @@ app.get('/health', async (_req, res) => {
   })
 });
 
+// ─── Live Session Event Hub ──────────────────────────────────────────────────
+const activeSessionListeners = new Map(); // sessionId -> Set<(event: string, data: any) => void>
+
+function subscribeToSession(sessionId, listener) {
+  if (!sessionId) return () => {};
+  if (!activeSessionListeners.has(sessionId)) {
+    activeSessionListeners.set(sessionId, new Set());
+  }
+  activeSessionListeners.get(sessionId).add(listener);
+  return () => {
+    const set = activeSessionListeners.get(sessionId);
+    if (set) {
+      set.delete(listener);
+      if (set.size === 0) activeSessionListeners.delete(sessionId);
+    }
+  };
+}
+
+function broadcastSessionEvent(sessionId, event, data) {
+  if (!sessionId) return;
+  const set = activeSessionListeners.get(sessionId);
+  if (set) {
+    for (const listener of set) {
+      try { listener(event, data); } catch (_) {}
+    }
+  }
+}
+
 // ─── Run agent (SSE) ─────────────────────────────────────────────────────────
 //
 // Every agent lifecycle event is forwarded as a named SSE event so the UI can
@@ -250,6 +278,7 @@ app.get('/health', async (_req, res) => {
 //   session_created  { sessionId }
 //   step             { step, total }
 //   llm_thinking     { step }
+//   tool_draft       { id, tool, argumentsDelta, rawArguments }
 //   tool_start       { id, tool, args }
 //   tool_result      { id, tool, result, raw, error }
 //   answer           { text }
@@ -299,12 +328,24 @@ app.post('/run', async (req, res) => {
   res.setHeader('X-Accel-Buffering', 'no'); // disable nginx buffering if proxied
   res.flushHeaders();
 
+  let activeSessionKey = sessionId || null;
+
   const send = (event, data) => {
+    if (event === 'session_created' && data?.sessionId) {
+      activeSessionKey = data.sessionId;
+    }
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    if (activeSessionKey) {
+      broadcastSessionEvent(activeSessionKey, event, data);
+    }
   };
 
   // Keep-alive ping so the connection stays open during long tool runs
-  const ping = setInterval(() => res.write(': ping\n\n'), 15_000);
+  const ping = setInterval(() => {
+    try {
+      res.write(': ping\n\n');
+    } catch (_) {}
+  }, 15_000);
 
   try {
     send('start', { goal });
@@ -320,6 +361,39 @@ app.post('/run', async (req, res) => {
     clearInterval(ping);
     res.end();
   }
+});
+
+// ─── Live Session Reconnect SSE Endpoint ──────────────────────────────────────
+app.get('/sessions/:id/events', (req, res) => {
+  const { id } = req.params;
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  const send = (event, data) => {
+    try {
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    } catch (_) {}
+  };
+
+  send('ping', { ts: Date.now() });
+  const ping = setInterval(() => {
+    try {
+      res.write(': ping\n\n');
+    } catch (_) {}
+  }, 15_000);
+
+  const unsubscribe = subscribeToSession(id, (event, data) => {
+    send(event, data);
+  });
+
+  req.on('close', () => {
+    clearInterval(ping);
+    unsubscribe();
+  });
 });
 
 app.post('/reset', async (req, res) => {
