@@ -116,14 +116,25 @@ export const api = {
     agent?: string,
     model?: string,
     summaryThreshold?: number,
-    useMemory?: boolean
+    useMemory?: boolean,
+    thinkingBudget?: number | null,
+    reasoningEffort?: string | null
   ): Promise<void> {
     const res = await fetch(`${API_BASE_URL}/run`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ goal, sessionId, agent, model, summaryThreshold, useMemory }),
+      body: JSON.stringify({ 
+        goal, 
+        sessionId, 
+        agent, 
+        model, 
+        summaryThreshold, 
+        useMemory,
+        thinkingBudget,
+        reasoningEffort
+      }),
       signal,
     });
 

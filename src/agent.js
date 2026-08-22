@@ -1216,7 +1216,17 @@ function extractToolCallFromObj(data) {
  * @param {Function} onEvent   - Called as onEvent(type: string, data: object) on every state change
  * @returns {Promise<{ sessionId: string, result: string }>}
  */
-export async function runAgent(goal, onEvent = () => {}, sessionId = null, agent = 'OpenManus', model = null, summaryThreshold = null, useMemory = false, liveConfig = null) {
+export async function runAgent(
+  goal, 
+  onEvent = () => {}, 
+  sessionId = null, 
+  agent = 'OpenManus', 
+  model = null, 
+  summaryThreshold = null, 
+  useMemory = false, 
+  liveConfig = null,
+  thinkingOptions = {}
+) {
   let existingHistory = [];
 
   if (sessionId) {
@@ -1433,24 +1443,68 @@ Before you call any browse_web action (except 'extract_text' or 'screenshot'), y
     // ── Call the LLM (streaming) ──────────────────────────────────────────────
     onEvent('llm_thinking', { step: step + 1 });
 
+    const { thinkingBudget, reasoningEffort } = thinkingOptions || {};
+    const lowerModel = (resolvedModel || '').toLowerCase();
+    const isClaudeModel = lowerModel.includes('claude') || lowerModel.includes('anthropic');
+    const isOpenAIReasoning = lowerModel.startsWith('o1') || lowerModel.startsWith('o3') || lowerModel.startsWith('o4') || lowerModel.includes('/o1') || lowerModel.includes('/o3') || lowerModel.includes('/o4') || lowerModel.includes('gpt-5');
+    const isDeepSeekReasoning = lowerModel.includes('r1') || lowerModel.includes('deepseek-reasoner') || lowerModel.includes('qwq');
+
+    const completionParams = {
+      model:       targetModelName,
+      messages,
+      tools:       getToolDefinitions(isGroq),
+      tool_choice: 'auto',
+      stream:      true,   // ← live token streaming
+    };
+
+    // Claude Extended Thinking (budget 1024 to 64000)
+    if (isClaudeModel && thinkingBudget !== undefined && thinkingBudget !== null) {
+      const budget = Number(thinkingBudget);
+      if (budget > 0) {
+        completionParams.thinking = { type: 'enabled', budget_tokens: budget };
+        completionParams.max_thinking_tokens = budget;
+        completionParams.extra_body = {
+          ...(completionParams.extra_body || {}),
+          thinking: { type: 'enabled', budget_tokens: budget }
+        };
+      } else {
+        completionParams.thinking = { type: 'disabled' };
+        completionParams.extra_body = {
+          ...(completionParams.extra_body || {}),
+          thinking: { type: 'disabled' }
+        };
+      }
+    } 
+    // OpenAI Reasoning Effort (low, medium, high)
+    else if (isOpenAIReasoning && reasoningEffort) {
+      completionParams.reasoning_effort = reasoningEffort;
+    }
+    // DeepSeek-R1 / QwQ Reasoning tokens
+    else if (isDeepSeekReasoning && (thinkingBudget || reasoningEffort)) {
+      if (thinkingBudget) {
+        completionParams.extra_body = {
+          ...(completionParams.extra_body || {}),
+          reasoning_tokens: Number(thinkingBudget)
+        };
+      }
+      if (reasoningEffort) {
+        completionParams.reasoning_effort = reasoningEffort;
+      }
+    }
+
+    // Ollama-specific options — ignored by OpenAI (extra_body is forwarded as-is)
+    if (!isOpenAI && !isGroq) {
+      completionParams.options = {
+        // Dynamically scale context limit based on threshold so Ollama doesn't silently truncate messages
+        num_ctx:    Number(process.env.OLLAMA_NUM_CTX  ?? (Math.ceil(threshold / 4) + 8192)),
+        num_gpu:    Number(process.env.OLLAMA_NUM_GPU  ?? -1),    // -1 = offload all layers to GPU
+        num_thread: Number(process.env.OLLAMA_NUM_THREAD ?? 8), // CPU thread cap for hybrid mode
+      };
+    }
+
     let stream;
     try {
-      stream = await llmClient.chat.completions.create({
-        model:       targetModelName,
-        messages,
-        tools:       getToolDefinitions(isGroq),
-        tool_choice: 'auto',
-        stream:      true,   // ← live token streaming
-        // Ollama-specific options — ignored by OpenAI (extra_body is forwarded as-is)
-        ...(!isOpenAI && !isGroq ? {
-          options: {
-            // Dynamically scale context limit based on threshold so Ollama doesn't silently truncate messages
-            num_ctx:  Number(process.env.OLLAMA_NUM_CTX  ?? (Math.ceil(threshold / 4) + 8192)),
-            num_gpu:  Number(process.env.OLLAMA_NUM_GPU  ?? -1),    // -1 = offload all layers to GPU
-            num_thread: Number(process.env.OLLAMA_NUM_THREAD ?? 8), // CPU thread cap for hybrid mode
-          },
-        } : {}),
-      });
+      stream = await llmClient.chat.completions.create(completionParams);
     } catch (err) {
       let msg = err.message ?? String(err);
       if (msg.includes('ECONNREFUSED') || msg.includes('fetch failed')) {

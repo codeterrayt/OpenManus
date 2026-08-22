@@ -213,6 +213,8 @@ interface ChatState {
   selectedAgent: string;
   searchQuery: string;
   summaryThreshold: number;
+  thinkingBudget: number | null;
+  reasoningEffort: 'low' | 'medium' | 'high';
   models: {
     ollama: string[];
     openai: Array<{ id: string; name: string; pricing: string; inputPrice: string; outputPrice: string }>;
@@ -256,6 +258,8 @@ interface ChatState {
   setSelectedAgent: (agent: string) => void;
   setSearchQuery: (query: string) => void;
   setSummaryThreshold: (threshold: number) => void;
+  setThinkingBudget: (budget: number | null) => void;
+  setReasoningEffort: (effort: 'low' | 'medium' | 'high') => void;
   setUseMemory: (use: boolean) => void;
   connectBrowserWS: () => void;
   disconnectBrowserWS: () => void;
@@ -768,6 +772,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   selectedAgent: 'OpenManus',
   searchQuery: '',
   summaryThreshold: Number(localStorage.getItem('openmanus_summary_threshold')) || 40000,
+  thinkingBudget: Number(localStorage.getItem('openmanus_thinking_budget')) || 4096,
+  reasoningEffort: (localStorage.getItem('openmanus_reasoning_effort') as 'low' | 'medium' | 'high') || 'medium',
   models: { ollama: [], openai: [], groq: [], custom: [] },
   useMemory: localStorage.getItem('openmanus_use_memory') !== 'false',
 
@@ -962,7 +968,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
         get().selectedAgent,
         get().selectedModel,
         get().summaryThreshold,
-        get().useMemory
+        get().useMemory,
+        get().thinkingBudget,
+        get().reasoningEffort
       );
     } catch (err: any) {
       console.error('[Store] Stream process error:', err);
@@ -1065,6 +1073,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setSummaryThreshold: (threshold: number) => {
     localStorage.setItem('openmanus_summary_threshold', String(threshold));
     set({ summaryThreshold: threshold });
+  },
+
+  setThinkingBudget: (budget: number | null) => {
+    if (budget !== null) {
+      localStorage.setItem('openmanus_thinking_budget', String(budget));
+    } else {
+      localStorage.removeItem('openmanus_thinking_budget');
+    }
+    set({ thinkingBudget: budget });
+  },
+
+  setReasoningEffort: (effort: 'low' | 'medium' | 'high') => {
+    localStorage.setItem('openmanus_reasoning_effort', effort);
+    set({ reasoningEffort: effort });
   },
 
   setUseMemory: (use: boolean) => {

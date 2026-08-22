@@ -17,6 +17,7 @@ import { config, resolveConfig } from './config.js';
 import { browserEvents, handleUserAction, setScreencastQuality, closeBrowser } from './tools/browser.js';
 import { cleanupSandbox } from './tools/docker.js';
 import { findWorkspaceFiles, readFile } from './tools/docker_fs.js';
+import { detectModelCapabilities } from './utils/modelCapabilities.js';
 import envRouter from './routes/env.js';
 
 const app = express();
@@ -209,11 +210,24 @@ app.get('/models', async (_req, res) => {
     });
   }
 
+  // Live dynamic detection of thinking & reasoning capabilities for all discovered models
+  const allModelIds = [
+    ...ollamaModels,
+    ...openaiModels.map(m => m.id),
+    ...groqModels.map(m => m.id),
+    ...customProvidersResult.flatMap(p => p.models || [])
+  ];
+  const capabilities = {};
+  for (const modelId of allModelIds) {
+    if (modelId) capabilities[modelId] = detectModelCapabilities(modelId);
+  }
+
   res.json({
     ollama:  ollamaModels,
     openai:  openaiModels,
     groq:    groqModels,
     custom:  customProvidersResult,
+    capabilities,
     // Tell the frontend which providers are enabled so it can show/hide sections
     enabled: { ollama: ollamaEnabled, groq: groqEnabled, openai: openaiEnabled },
   });
@@ -285,7 +299,7 @@ function broadcastSessionEvent(sessionId, event, data) {
 //   done             { sessionId, result }
 //   error            { message }
 app.post('/run', async (req, res) => {
-  const { goal, sessionId, agent, model, summaryThreshold, useMemory } = req.body ?? {};
+  const { goal, sessionId, agent, model, summaryThreshold, useMemory, thinkingBudget, reasoningEffort } = req.body ?? {};
   if (!goal || typeof goal !== 'string') {
     return res.status(400).json({ error: 'Body must contain a "goal" string.' });
   }
@@ -353,7 +367,17 @@ app.post('/run', async (req, res) => {
     // Resolve config from DB if ENV_SOURCE=db, otherwise use .env
     const liveConfig = await resolveConfig(getEnvSettings);
 
-    await runAgent(goal, (type, data) => send(type, data), sessionId, agent, model, summaryThreshold, useMemory, liveConfig);
+    await runAgent(
+      goal, 
+      (type, data) => send(type, data), 
+      sessionId, 
+      agent, 
+      model, 
+      summaryThreshold, 
+      useMemory, 
+      liveConfig,
+      { thinkingBudget, reasoningEffort }
+    );
   } catch (err) {
     console.error('[API] /run error:', err);
     send('error', { message: err.message });

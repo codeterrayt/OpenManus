@@ -1,4 +1,3 @@
-// src/components/ChatInput.tsx
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Paperclip, 
@@ -14,6 +13,7 @@ import {
   Square
 } from 'lucide-react';
 import { useChatStore } from '../store/useChatStore';
+import { ThinkingSelector } from './ThinkingSelector';
 
 const AGENT_OPTIONS = [
   { id: 'OpenManus', name: 'OpenManus (Full Agent)' },
@@ -307,6 +307,9 @@ export const ChatInput: React.FC = () => {
                   ))}
                 </select>
               </div>
+
+              {/* Dynamic Model Thinking / Reasoning Capability Selector */}
+              <ThinkingSelector />
 
               {/* Agent Selector */}
               <div className="flex items-center gap-1.5 bg-white/[0.04] hover:bg-white/[0.07] border border-white/[0.08] px-2.5 py-1 rounded-lg text-xs transition-colors">
