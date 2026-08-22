@@ -1,4 +1,3 @@
-// src/components/StreamingMessage.tsx
 import React, { useState, useEffect } from 'react';
 import { 
   BookText, 
@@ -12,13 +11,16 @@ import {
   FolderGit2, 
   Settings, 
   Layers,
-  Clock
+  Clock,
+  Coins,
+  Cpu
 } from 'lucide-react';
 import { GenUIRenderer } from './GenUIRenderer';
 import { useChatStore, formatToolActivity } from '../store/useChatStore';
 import { ToolCallsGroup } from './ToolCallsGroup';
 import { ThinkingBlock } from './ThinkingBlock';
 import MarkdownRenderer from './MarkdownRenderer';
+import { calculateCost, formatTokenCount } from '../utils/pricing';
 
 const parseC1UiBlock = (content: string) => {
   const openTags = ['<c1_ui>', '<c1-component>', '<thesys>'];
@@ -291,17 +293,47 @@ export const StreamingMessage: React.FC = () => {
             <ToolCallsGroup toolCalls={toolCallsArray} />
           )}
 
-          {/* Abort Button */}
-          <div className="pt-2">
-            <button
-              type="button"
-              onClick={abortChat}
-              className="flex items-center gap-1.5 text-xs text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 px-3 py-1.5 rounded-lg transition-colors font-semibold active:scale-95 cursor-pointer"
-            >
-              <Square className="w-3 h-3 fill-rose-400" />
-              <span>Stop Agent</span>
-            </button>
-          </div>
+          {/* Live Cost & Metrics Footer */}
+          {(() => {
+            const promptTokensEst = 250;
+            const completionTokensEst = Math.ceil(((streamingContent?.length || 0) + (thoughtsToDisplay?.length || 0)) / 4) + (toolCallsArray.length * 30);
+            const liveTotalTokens = promptTokensEst + completionTokensEst;
+            const costInfo = calculateCost(promptTokensEst, completionTokensEst, selectedModel);
+
+            return (
+              <div className="flex items-center justify-between border-t border-white/[0.06] pt-2.5 mt-2 text-[11px] font-mono select-none">
+                <div className="flex items-center gap-2 text-slate-400">
+                  <span className={`flex items-center gap-1 px-2 py-0.5 rounded-md border ${
+                    costInfo.isFree
+                      ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
+                      : 'bg-purple-500/10 text-purple-300 border-purple-500/20'
+                  }`}>
+                    <Coins className="w-3 h-3" />
+                    <span>{costInfo.formattedCost}</span>
+                  </span>
+
+                  <span className="text-slate-500 flex items-center gap-1">
+                    <Cpu className="w-3 h-3 text-slate-500" />
+                    {formatTokenCount(liveTotalTokens)} tokens
+                  </span>
+
+                  <span className="text-slate-500 flex items-center gap-1">
+                    <Clock className="w-3 h-3 text-slate-500" />
+                    {elapsedSeconds}s
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={abortChat}
+                  className="flex items-center gap-1.5 text-xs text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 px-3 py-1.5 rounded-lg transition-colors font-semibold active:scale-95 cursor-pointer"
+                >
+                  <Square className="w-3 h-3 fill-rose-400" />
+                  <span>Stop Agent</span>
+                </button>
+              </div>
+            );
+          })()}
         </div>
       </div>
     </div>

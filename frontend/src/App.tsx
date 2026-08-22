@@ -9,20 +9,23 @@ import {
   Cpu, 
   Sparkles,
   ArrowRight,
-  ArrowDown
+  ArrowDown,
+  Coins
 } from 'lucide-react';
 import { useChatStore } from './store/useChatStore';
 import Sidebar from './components/Sidebar';
 import ChatInput from './components/ChatInput';
-import ChatMessage from './components/ChatMessage';
+import ConversationTurnItem, { groupHistoryIntoTurns } from './components/ConversationTurnItem';
 import StreamingMessage from './components/StreamingMessage';
 import RightPanel from './components/RightPanel';
+import { calculateCost, formatTokenCount } from './utils/pricing';
 
 function App() {
   const {
     activeSession,
     isStreaming,
     streamingContent,
+    selectedModel,
     sidebarCollapsed,
     toggleSidebar,
     rightPanelCollapsed,
@@ -179,50 +182,85 @@ function App() {
           ref={scrollContainerRef}
           className="flex-1 overflow-y-auto px-4 py-6 md:px-8 space-y-6 scrollbar-thin relative"
         >
-          {activeSession ? (
-            <div className="max-w-3xl mx-auto space-y-6 pb-6">
-              {/* Mission Goal Summary Header */}
-              <div className="rounded-2xl p-4 bg-[#0F131E] border border-white/[0.08] flex items-center justify-between gap-4">
-                <div className="space-y-0.5 select-text min-w-0">
-                  <div className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider font-mono">
-                    Mission Directive
+          {activeSession ? (() => {
+            const conversationTurns = groupHistoryIntoTurns(activeSession.history || [], selectedModel);
+            
+            // Calculate total session tokens and live cost
+            let promptTokens = 0;
+            let completionTokens = 0;
+            let totalTurns = conversationTurns.length;
+            for (const t of conversationTurns) {
+              promptTokens += t.estimatedPromptTokens;
+              completionTokens += t.estimatedCompletionTokens;
+            }
+            const totalTokens = promptTokens + completionTokens;
+            const sessionCost = calculateCost(promptTokens, completionTokens, selectedModel);
+
+            return (
+              <div className="max-w-3xl mx-auto space-y-6 pb-6">
+                {/* Mission Goal Summary Header */}
+                <div className="rounded-2xl p-4 bg-[#0F131E] border border-white/[0.08] flex items-center justify-between gap-4 flex-wrap">
+                  <div className="space-y-0.5 select-text min-w-0 flex-1">
+                    <div className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider font-mono">
+                      Mission Directive
+                    </div>
+                    <h2 className="text-sm font-semibold text-white truncate">
+                      {activeSession.goal}
+                    </h2>
                   </div>
-                  <h2 className="text-sm font-semibold text-white truncate">
-                    {activeSession.goal}
-                  </h2>
+                  
+                  <div className="flex items-center gap-2">
+                    {/* Live Total Session Cost Badge */}
+                    <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-mono font-medium border ${
+                      sessionCost.isFree
+                        ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
+                        : 'bg-gradient-to-r from-purple-500/15 to-indigo-500/15 text-purple-200 border-purple-500/30 shadow-sm'
+                    }`}
+                    title={`Session prompt tokens: ~${promptTokens}, completion tokens: ~${completionTokens}`}
+                    >
+                      <Coins className="w-3.5 h-3.5 text-purple-400" />
+                      <span>{sessionCost.formattedCost}</span>
+                      <span className="text-white/[0.2]">•</span>
+                      <span className="text-slate-400">{formatTokenCount(totalTokens)} tok</span>
+                      {totalTurns > 0 && (
+                        <>
+                          <span className="text-white/[0.2]">•</span>
+                          <span className="text-slate-400">{totalTurns} {totalTurns === 1 ? 'turn' : 'turns'}</span>
+                        </>
+                      )}
+                    </div>
+
+                    {rightPanelCollapsed && (
+                      <button
+                        type="button"
+                        onClick={toggleRightPanel}
+                        className="shrink-0 flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs bg-[#151926] hover:bg-[#1A2030] text-slate-300 hover:text-white border border-white/[0.08] transition-colors cursor-pointer"
+                      >
+                        <PanelRight className="w-3.5 h-3.5 text-indigo-400" />
+                        <span>Workspace</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
-                
-                {rightPanelCollapsed && (
-                  <button
-                    type="button"
-                    onClick={toggleRightPanel}
-                    className="shrink-0 flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs bg-[#151926] hover:bg-[#1A2030] text-slate-300 hover:text-white border border-white/[0.08] transition-colors"
-                  >
-                    <PanelRight className="w-3.5 h-3.5 text-indigo-400" />
-                    <span>Workspace</span>
-                  </button>
-                )}
-              </div>
 
-              {/* Message loop */}
-              <div className="space-y-6">
-                {activeSession.history.map((msg, idx) => (
-                  <ChatMessage 
-                    key={idx} 
-                    message={msg} 
-                    index={idx}
-                    isLast={idx === activeSession.history.length - 1} 
-                    history={activeSession.history}
-                  />
-                ))}
+                {/* Conversational Turns Loop */}
+                <div className="space-y-6">
+                  {conversationTurns.map((turn, idx) => (
+                    <ConversationTurnItem 
+                      key={turn.id || idx} 
+                      turn={turn} 
+                      isLast={idx === conversationTurns.length - 1} 
+                    />
+                  ))}
 
-                {/* Live stream message */}
-                {isStreaming && <StreamingMessage />}
-                
-                <div ref={messagesEndRef} />
+                  {/* Live stream message */}
+                  {isStreaming && <StreamingMessage />}
+                  
+                  <div ref={messagesEndRef} />
+                </div>
               </div>
-            </div>
-          ) : (
+            );
+          })() : (
             /* Empty state: Executive Hero & Prompt Chips */
             <div className="h-full flex flex-col justify-center items-center max-w-2xl mx-auto text-center px-4 space-y-8 animate-fade-in">
               <div className="space-y-2.5">
