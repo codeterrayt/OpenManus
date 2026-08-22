@@ -11,7 +11,7 @@ import express from 'express';
 import http from 'http';
 import { WebSocketServer } from 'ws';
 import OpenAI from 'openai';
-import { runAgent } from './agent.js';
+import { runAgent, summarizeHistory } from './agent.js';
 import { getPool, initDb, getEnvSettings } from './db.js';
 import { config, resolveConfig } from './config.js';
 import { browserEvents, handleUserAction, setScreencastQuality, closeBrowser } from './tools/browser.js';
@@ -397,7 +397,21 @@ async function generateSensibleTitle(goal, liveConfig, model) {
 //   done             { sessionId, result }
 //   error            { message }
 app.post('/run', async (req, res) => {
-  const { goal, sessionId, agent, model, provider, summaryThreshold, useMemory, thinkingBudget, reasoningEffort } = req.body ?? {};
+  const { 
+    goal, 
+    sessionId, 
+    agent, 
+    model, 
+    provider, 
+    summaryThreshold, 
+    useMemory, 
+    thinkingBudget, 
+    reasoningEffort,
+    autoSummarize,
+    maxHistoryTurns,
+    summaryStrategy,
+    keepRecentTurns
+  } = req.body ?? {};
   if (!goal || typeof goal !== 'string') {
     return res.status(400).json({ error: 'Body must contain a "goal" string.' });
   }
@@ -501,8 +515,25 @@ app.post('/run', async (req, res) => {
       summaryThreshold, 
       useMemory, 
       liveConfig,
-      { thinkingBudget, reasoningEffort, provider: requestedProvider },
-      { signal: abortController.signal, provider: requestedProvider }
+      { 
+        thinkingBudget, 
+        reasoningEffort, 
+        provider: requestedProvider,
+        autoSummarize: autoSummarize !== undefined ? Boolean(autoSummarize) : true,
+        maxHistoryTurns: maxHistoryTurns !== undefined ? Number(maxHistoryTurns) : 10,
+        summaryStrategy: summaryStrategy || 'rolling_summary',
+        keepRecentTurns: keepRecentTurns !== undefined ? Number(keepRecentTurns) : 6,
+        summaryThreshold
+      },
+      { 
+        signal: abortController.signal, 
+        provider: requestedProvider,
+        autoSummarize: autoSummarize !== undefined ? Boolean(autoSummarize) : true,
+        maxHistoryTurns: maxHistoryTurns !== undefined ? Number(maxHistoryTurns) : 10,
+        summaryStrategy: summaryStrategy || 'rolling_summary',
+        keepRecentTurns: keepRecentTurns !== undefined ? Number(keepRecentTurns) : 6,
+        summaryThreshold
+      }
     );
   } catch (err) {
     console.error('[API] /run error:', err);
@@ -540,6 +571,84 @@ app.post(['/sessions/:id/stop', '/sessions/:id/abort', '/stop'], async (req, res
   }
 
   res.json({ success: true, message: 'Session execution stopped.' });
+});
+
+// ─── Manual On-Demand Context Compaction Endpoint ───────────────────────────
+app.post('/sessions/:id/summarize-context', async (req, res) => {
+  const { id } = req.params;
+  const { model, keepRecent = 4 } = req.body ?? {};
+  try {
+    const rows = await getPool().query('SELECT history FROM sessions WHERE id = $1', [id]);
+    if (!rows.length) return res.status(404).json({ error: 'Session not found' });
+
+    const dbHistory = rows[0].history || [];
+    if (dbHistory.length <= (Number(keepRecent) || 4) + 2) {
+      return res.json({ success: true, message: 'History is already compact', history: dbHistory });
+    }
+
+    const liveConfig = await resolveConfig(getEnvSettings);
+    const resolvedModel = model || liveConfig.ollama.model;
+
+    const isOpenAI = resolvedModel && (
+      resolvedModel.startsWith('gpt-') ||
+      resolvedModel.startsWith('o1') ||
+      resolvedModel.startsWith('o3') ||
+      resolvedModel.startsWith('o4')
+    );
+    const isGroq = resolvedModel && (
+      resolvedModel.startsWith('llama-') ||
+      resolvedModel.startsWith('llama3-') ||
+      resolvedModel.startsWith('deepseek-') ||
+      resolvedModel.startsWith('gemma2-') ||
+      resolvedModel.startsWith('groq/') ||
+      resolvedModel.includes('/') ||
+      resolvedModel.startsWith('allam-')
+    );
+
+    const matchingCustom = (liveConfig.customProviders || []).find(p => Array.isArray(p.models) && p.models.includes(resolvedModel));
+
+    let llmClient;
+    if (matchingCustom) {
+      llmClient = new OpenAI({
+        baseURL: matchingCustom.baseURL,
+        apiKey: matchingCustom.apiKey || 'custom',
+        defaultHeaders: { 'User-Agent': 'Claude-Desktop/0.7.6' }
+      });
+    } else if (isOpenAI) {
+      llmClient = new OpenAI({
+        apiKey: liveConfig.openai?.apiKey || process.env.OPENAI_API_KEY || '',
+        baseURL: liveConfig.openai?.baseURL || 'https://api.openai.com/v1',
+      });
+    } else if (isGroq) {
+      llmClient = new OpenAI({
+        baseURL: liveConfig.groq?.baseURL || 'https://api.groq.com/openai/v1',
+        apiKey: liveConfig.groq?.apiKey || process.env.GROQ_API_KEY || '',
+      });
+    } else {
+      llmClient = new OpenAI({
+        baseURL: liveConfig.ollama.baseURL,
+        apiKey: liveConfig.ollama.apiKey,
+      });
+    }
+
+    const sumResult = await summarizeHistory(llmClient, resolvedModel, dbHistory, null, {
+      keepRecent: Number(keepRecent) || 4,
+      isGroq
+    });
+
+    if (sumResult) {
+      await getPool().query(
+        'UPDATE sessions SET history = $1::jsonb, updated_at = NOW() WHERE id = $2',
+        [JSON.stringify(sumResult.summarized), id]
+      );
+      return res.json({ success: true, summary: sumResult.summary, history: sumResult.summarized });
+    }
+
+    res.json({ success: false, message: 'Could not summarize history', history: dbHistory });
+  } catch (err) {
+    console.error('[API] Manual context summarize error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ─── Live Session Reconnect SSE Endpoint ──────────────────────────────────────

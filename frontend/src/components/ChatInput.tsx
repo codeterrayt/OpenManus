@@ -10,7 +10,8 @@ import {
   FileText,
   Workflow,
   Brain,
-  Square
+  Square,
+  History
 } from 'lucide-react';
 import { useChatStore } from '../store/useChatStore';
 import { ThinkingSelector } from './ThinkingSelector';
@@ -40,6 +41,10 @@ export const ChatInput: React.FC = () => {
     fetchModels,
     useMemory,
     setUseMemory,
+    maxHistoryTurns,
+    setMaxHistoryTurns,
+    summaryStrategy,
+    autoSummarize,
     abortChat
   } = useChatStore();
 
@@ -335,11 +340,32 @@ export const ChatInput: React.FC = () => {
                     ? 'bg-indigo-500/15 border-indigo-500/40 text-indigo-300' 
                     : 'bg-white/[0.03] border-white/[0.06] text-slate-400 hover:text-white'
                 }`}
-                title="Toggle long-term memories"
+                title="Toggle Mem0 long-term & knowledge graph memory"
               >
                 <Brain className="w-3.5 h-3.5" />
                 <span>{useMemory ? 'Memory' : 'No Memory'}</span>
               </button>
+
+              {/* Context Turn Depth Quick Selector */}
+              <div 
+                className="flex items-center gap-1.5 bg-white/[0.04] hover:bg-white/[0.07] border border-white/[0.08] px-2.5 py-1 rounded-lg text-xs transition-colors"
+                title={`Context History: ${maxHistoryTurns === 0 ? 'Full History (All Turns)' : `Last ${maxHistoryTurns} Turns`}, Strategy: ${summaryStrategy}, Auto-Summarize: ${autoSummarize ? 'ON' : 'OFF'}`}
+              >
+                <History className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                <select
+                  value={maxHistoryTurns}
+                  onChange={(e) => setMaxHistoryTurns(Number(e.target.value))}
+                  disabled={isStreaming}
+                  className="bg-transparent text-slate-200 border-none focus:ring-0 cursor-pointer font-medium text-[11px] py-0 outline-none"
+                >
+                  <option value={3} className="bg-[#121622] text-white">3 Turns Context</option>
+                  <option value={5} className="bg-[#121622] text-white">5 Turns Context</option>
+                  <option value={10} className="bg-[#121622] text-white">10 Turns Context</option>
+                  <option value={20} className="bg-[#121622] text-white">20 Turns Context</option>
+                  <option value={50} className="bg-[#121622] text-white">50 Turns Context</option>
+                  <option value={0} className="bg-[#121622] text-white">All Turns (Full)</option>
+                </select>
+              </div>
             </div>
 
             {/* Right Action Button */}

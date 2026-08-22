@@ -13,7 +13,13 @@ import {
   PanelLeftClose,
   KeyRound,
   Sliders,
-  Sparkles
+  Sparkles,
+  History,
+  Zap,
+  Scissors,
+  Layers,
+  CheckCircle2,
+  RotateCcw
 } from 'lucide-react';
 import { useChatStore } from '../store/useChatStore';
 import { api } from '../services/api';
@@ -25,6 +31,7 @@ export const Sidebar: React.FC = () => {
   const {
     sessions,
     activeSessionId,
+    activeSession,
     fetchSessions,
     selectSession,
     newChat,
@@ -32,6 +39,15 @@ export const Sidebar: React.FC = () => {
     setSearchQuery,
     summaryThreshold,
     setSummaryThreshold,
+    autoSummarize,
+    setAutoSummarize,
+    maxHistoryTurns,
+    setMaxHistoryTurns,
+    summaryStrategy,
+    setSummaryStrategy,
+    keepRecentTurns,
+    setKeepRecentTurns,
+    summarizeActiveContext,
     selectedModel,
     sidebarCollapsed,
     toggleSidebar
@@ -40,6 +56,8 @@ export const Sidebar: React.FC = () => {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'general' | 'memory' | 'environment'>('general');
+  const [isSummarizingContext, setIsSummarizingContext] = useState(false);
+  const [summarizeSuccessMsg, setSummarizeSuccessMsg] = useState<string | null>(null);
 
   // Load sessions and check health periodically
   useEffect(() => {
@@ -349,32 +367,243 @@ export const Sidebar: React.FC = () => {
 
             {/* Modal Content */}
             <div className="p-5 overflow-y-auto flex-1 space-y-4">
-              {/* Tab: General */}
+              {/* Tab: General & Context Management */}
               {settingsTab === 'general' && (
                 <div className="space-y-4">
+                  {/* Context Strategy Selector */}
+                  <div className="p-4 rounded-xl bg-[#131724] border border-white/[0.06] space-y-3">
+                    <div>
+                      <div className="text-xs font-semibold text-white flex items-center gap-1.5">
+                        <Layers className="w-3.5 h-3.5 text-indigo-400" />
+                        <span>Context Management Strategy</span>
+                      </div>
+                      <div className="text-[11px] text-slate-400 mt-0.5">
+                        Control how conversation history is handled during long agent loops and multi-turn conversations.
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setSummaryStrategy('rolling_summary')}
+                        className={`p-2.5 rounded-xl border text-left transition-all ${
+                          summaryStrategy === 'rolling_summary'
+                            ? 'bg-indigo-600/15 border-indigo-500 text-white shadow-sm'
+                            : 'bg-[#0C0F18] border-white/[0.06] text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        <div className="text-[11px] font-bold flex items-center justify-between">
+                          <span>Rolling Summary</span>
+                          {summaryStrategy === 'rolling_summary' && <CheckCircle2 className="w-3 h-3 text-indigo-400" />}
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-1 leading-tight">
+                          Condenses older turns with LLM; preserves recent turns.
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setSummaryStrategy('sliding_window')}
+                        className={`p-2.5 rounded-xl border text-left transition-all ${
+                          summaryStrategy === 'sliding_window'
+                            ? 'bg-indigo-600/15 border-indigo-500 text-white shadow-sm'
+                            : 'bg-[#0C0F18] border-white/[0.06] text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        <div className="text-[11px] font-bold flex items-center justify-between">
+                          <span>Sliding Window</span>
+                          {summaryStrategy === 'sliding_window' && <CheckCircle2 className="w-3 h-3 text-indigo-400" />}
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-1 leading-tight">
+                          Keeps last N turns verbatim; 0 extra LLM tokens used.
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setSummaryStrategy('off')}
+                        className={`p-2.5 rounded-xl border text-left transition-all ${
+                          summaryStrategy === 'off'
+                            ? 'bg-indigo-600/15 border-indigo-500 text-white shadow-sm'
+                            : 'bg-[#0C0F18] border-white/[0.06] text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        <div className="text-[11px] font-bold flex items-center justify-between">
+                          <span>Full History</span>
+                          {summaryStrategy === 'off' && <CheckCircle2 className="w-3 h-3 text-indigo-400" />}
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-1 leading-tight">
+                          Preserves all turns; never summarizes or truncates.
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Auto-Summarization Master Toggle */}
+                  <div className="p-4 rounded-xl bg-[#131724] border border-white/[0.06] flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-semibold text-white flex items-center gap-1.5">
+                        <Zap className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Automatic Context Summarization</span>
+                      </div>
+                      <div className="text-[11px] text-slate-400 mt-0.5">
+                        When enabled, automatically compresses context when token limit is approached. Turn off to prevent all unprompted summaries.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setAutoSummarize(!autoSummarize)}
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        autoSummarize ? 'bg-indigo-600' : 'bg-slate-700'
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                          autoSummarize ? 'translate-x-4' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {/* Past Turns History Depth */}
                   <div className="p-4 rounded-xl bg-[#131724] border border-white/[0.06] space-y-3">
                     <div className="flex items-center justify-between">
                       <div>
-                        <div className="text-xs font-semibold text-white">Context Auto-Summarization Threshold</div>
+                        <div className="text-xs font-semibold text-white flex items-center gap-1.5">
+                          <History className="w-3.5 h-3.5 text-cyan-400" />
+                          <span>Past Turns Depth (Session History Access)</span>
+                        </div>
                         <div className="text-[11px] text-slate-400 mt-0.5">
-                          Compress message history when steps reach this count to save context window tokens.
+                          How many previous user turns in this chat session are fed to the model context.
                         </div>
                       </div>
-                      <span className="text-xs font-mono font-bold text-indigo-400 px-2.5 py-1 rounded bg-indigo-500/10 border border-indigo-500/20">
-                        {summaryThreshold} steps
+                      <span className="text-xs font-mono font-bold text-cyan-400 px-2.5 py-1 rounded bg-cyan-500/10 border border-cyan-500/20">
+                        {maxHistoryTurns === 0 ? 'Unlimited (All)' : `${maxHistoryTurns} Turns`}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {[
+                        { label: '3 Turns', val: 3 },
+                        { label: '5 Turns', val: 5 },
+                        { label: '10 Turns', val: 10 },
+                        { label: '20 Turns', val: 20 },
+                        { label: '50 Turns', val: 50 },
+                        { label: 'All (Unlimited)', val: 0 },
+                      ].map(opt => (
+                        <button
+                          key={opt.val}
+                          type="button"
+                          onClick={() => setMaxHistoryTurns(opt.val)}
+                          className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all ${
+                            maxHistoryTurns === opt.val
+                              ? 'bg-cyan-600/20 border-cyan-500/50 text-cyan-200'
+                              : 'bg-[#0C0F18] border-white/[0.06] text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Keep Recent Turns Verbatim Slider */}
+                  <div className="p-4 rounded-xl bg-[#131724] border border-white/[0.06] space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-xs font-semibold text-white flex items-center gap-1.5">
+                          <Scissors className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Preserve Recent Turns Verbatim</span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 mt-0.5">
+                          Number of latest turns that are NEVER compressed or summarized for maximum continuity.
+                        </div>
+                      </div>
+                      <span className="text-xs font-mono font-bold text-emerald-400 px-2.5 py-1 rounded bg-emerald-500/10 border border-emerald-500/20">
+                        {keepRecentTurns} Turns
                       </span>
                     </div>
                     <input
                       type="range"
-                      min={4}
-                      max={40}
-                      step={2}
+                      min={2}
+                      max={20}
+                      step={1}
+                      value={keepRecentTurns}
+                      onChange={(e) => setKeepRecentTurns(Number(e.target.value))}
+                      className="w-full accent-emerald-500 cursor-pointer"
+                    />
+                  </div>
+
+                  {/* Token Threshold Slider */}
+                  <div className="p-4 rounded-xl bg-[#131724] border border-white/[0.06] space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-xs font-semibold text-white">Context Token Compression Threshold</div>
+                        <div className="text-[11px] text-slate-400 mt-0.5">
+                          Trigger compaction when non-system messages exceed this token count.
+                        </div>
+                      </div>
+                      <span className="text-xs font-mono font-bold text-indigo-400 px-2.5 py-1 rounded bg-indigo-500/10 border border-indigo-500/20">
+                        {(summaryThreshold / 1000).toFixed(0)}k tokens
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={10000}
+                      max={120000}
+                      step={5000}
                       value={summaryThreshold}
                       onChange={(e) => setSummaryThreshold(Number(e.target.value))}
                       className="w-full accent-indigo-500 cursor-pointer"
                     />
                   </div>
 
+                  {/* On-Demand Manual Context Summarization Action */}
+                  <div className="p-4 rounded-xl bg-[#131724] border border-white/[0.06] flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-semibold text-white">Manual Context Compression</div>
+                      <div className="text-[11px] text-slate-400 mt-0.5">
+                        {activeSession ? `Active session has ${activeSession.history?.length || 0} stored events.` : 'Select an active session to compress history.'}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={!activeSessionId || isSummarizingContext}
+                      onClick={async () => {
+                        setIsSummarizingContext(true);
+                        setSummarizeSuccessMsg(null);
+                        try {
+                          await summarizeActiveContext();
+                          setSummarizeSuccessMsg('Context compressed successfully!');
+                          setTimeout(() => setSummarizeSuccessMsg(null), 3000);
+                        } catch (err: any) {
+                          setSummarizeSuccessMsg(`Error: ${err.message}`);
+                        } finally {
+                          setIsSummarizingContext(false);
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-indigo-600/30 hover:bg-indigo-600 border border-indigo-500/40 text-indigo-200 hover:text-white text-xs font-semibold rounded-xl transition-all flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {isSummarizingContext ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Compressing...</span>
+                        </>
+                      ) : (
+                        <>
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>Compress Now</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  {summarizeSuccessMsg && (
+                    <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-300 font-medium">
+                      {summarizeSuccessMsg}
+                    </div>
+                  )}
+
+                  {/* Runtime Status */}
                   {health && (
                     <div className="p-4 rounded-xl bg-[#131724] border border-white/[0.06] space-y-2">
                       <div className="text-xs font-semibold text-white">Runtime Environment Status</div>

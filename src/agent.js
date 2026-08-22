@@ -996,12 +996,52 @@ function estimateTokens(messages) {
 }
 
 /**
+ * Slices conversation history to include at most the last `maxTurns` user turns
+ * while preserving system summary messages and ensuring tool call integrity.
+ * If maxTurns is 0, undefined, or null, returns the full history.
+ */
+export function sliceHistoryByTurns(history, maxTurns = 0) {
+  if (!Array.isArray(history) || history.length === 0) return [];
+  if (!maxTurns || Number(maxTurns) <= 0) return sanitizeHistory(history);
+
+  const limitTurns = Number(maxTurns);
+  const leadingSummary = history[0]?.role === 'system' ? history[0] : null;
+  const nonSystem = leadingSummary ? history.slice(1) : history;
+
+  // Find all indices where role === 'user'
+  const userIndices = [];
+  for (let i = 0; i < nonSystem.length; i++) {
+    if (nonSystem[i]?.role === 'user') {
+      userIndices.push(i);
+    }
+  }
+
+  if (userIndices.length <= limitTurns) {
+    return sanitizeHistory(history);
+  }
+
+  const targetStartIndex = userIndices[userIndices.length - limitTurns];
+  let sliced = nonSystem.slice(targetStartIndex);
+
+  // If there was an earlier conversation summary message, keep it at the top for continuity
+  if (leadingSummary) {
+    sliced = [leadingSummary, ...sliced];
+  }
+
+  return sanitizeHistory(sliced);
+}
+
+/**
  * Summarizes old messages into a single compressed context message.
- * Keeps the last KEEP_RECENT messages untouched for continuity.
+ * Keeps the last `keepRecent` messages untouched for continuity.
  * Returns { summarized: Message[], summary: string }
  */
-async function summarizeHistory(llmClient, model, messages, onEvent, isGroq = false) {
-  const KEEP_RECENT = isGroq ? 2 : 6;
+export async function summarizeHistory(llmClient, model, messages, onEvent = null, options = {}) {
+  const isGroq = typeof options === 'boolean' ? options : (options.isGroq || false);
+  const userKeepRecent = typeof options === 'object' ? Number(options.keepRecent || 0) : 0;
+  const defaultKeep = isGroq ? 2 : 6;
+  const KEEP_RECENT = userKeepRecent > 0 ? userKeepRecent : defaultKeep;
+
   if (messages.length <= KEEP_RECENT + 2) return null; // nothing to summarize
 
   // Find a safe split point that does NOT split an assistant tool_calls <-> tool response block:
@@ -1025,7 +1065,9 @@ async function summarizeHistory(llmClient, model, messages, onEvent, isGroq = fa
     }
   }
 
-  onEvent('summarizing', { message: 'Conversation is getting long — creating summary to save context...' });
+  if (onEvent) {
+    onEvent('summarizing', { message: 'Compressing earlier conversation context to free up tokens...' });
+  }
 
   const summaryPrompt = [
     {
@@ -1057,8 +1099,10 @@ async function summarizeHistory(llmClient, model, messages, onEvent, isGroq = fa
     return null;
   }
 
-  onEvent('summary_created', { summary });
-  console.log(`[Agent] Summarized ${toSummarize.length} messages into ${summary.length} chars.`);
+  if (onEvent) {
+    onEvent('summary_created', { summary });
+  }
+  console.log(`[Agent] Summarized ${toSummarize.length} messages into ${summary.length} chars (preserved ${recent.length} recent messages).`);
 
   const summaryMsg = {
     role: 'system',
@@ -1558,11 +1602,27 @@ Before you call any browse_web action (except 'extract_text' or 'screenshot'), y
                     `User request:\n${goal}`;
     }
 
+    // Extract user context & turn access preferences
+    const contextOpts = {
+      autoSummarize: options.autoSummarize ?? thinkingOptions?.autoSummarize ?? true,
+      maxHistoryTurns: options.maxHistoryTurns !== undefined ? Number(options.maxHistoryTurns) : (thinkingOptions?.maxHistoryTurns !== undefined ? Number(thinkingOptions.maxHistoryTurns) : 10),
+      summaryStrategy: options.summaryStrategy || thinkingOptions?.summaryStrategy || 'rolling_summary',
+      keepRecentTurns: options.keepRecentTurns !== undefined ? Number(options.keepRecentTurns) : (thinkingOptions?.keepRecentTurns !== undefined ? Number(thinkingOptions.keepRecentTurns) : 6),
+      summaryThreshold: summaryThreshold ?? options.summaryThreshold ?? thinkingOptions?.summaryThreshold ?? null
+    };
+
+    // Apply past turn access slice if maxHistoryTurns is set
+    const slicedHistory = contextOpts.maxHistoryTurns > 0 
+      ? sliceHistoryByTurns(existingHistory, contextOpts.maxHistoryTurns)
+      : existingHistory;
+
     const messages = [
       { role: 'system', content: systemPrompt },
-      ...existingHistory,
+      ...slicedHistory,
       { role: 'user',   content: userContent },
     ];
+
+    console.log(`[Agent] Initialized context with ${slicedHistory.length} prior messages (${contextOpts.maxHistoryTurns > 0 ? `last ${contextOpts.maxHistoryTurns} turns` : 'full history'}, strategy: ${contextOpts.summaryStrategy}, autoSummarize: ${contextOpts.autoSummarize})`);
 
     await query(`UPDATE sessions SET system_prompt = $1 WHERE id = $2`, [systemPrompt, sessionId]).catch(() => {});
     await appendHistory(sessionId, [{ role: 'user', content: userContent }]);
@@ -1582,36 +1642,57 @@ Before you call any browse_web action (except 'extract_text' or 'screenshot'), y
     console.log(`[Agent] Step ${step + 1}/${MAX_STEPS}`);
     onEvent('step', { step: step + 1, total: MAX_STEPS });
 
-    // ── Auto-summarize if context is getting large ────────────────────────────
-    let threshold = summaryThreshold ? Number(summaryThreshold) : null;
-    if (!threshold) {
-      if (isGroq) {
-        const groqTpmLimit = getGroqTpmLimit(resolvedModel);
-        threshold = Math.floor(groqTpmLimit * 0.70); // 70% of TPM limit (in tokens)
-      } else {
-        const isLargeContextModel = isOpenAI || (resolvedModel && (
-          resolvedModel.includes('13b') || 
-          resolvedModel.includes('14b') || 
-          resolvedModel.includes('32b') || 
-          resolvedModel.includes('70b') || 
-          resolvedModel.includes('e4b')
-        ));
-        threshold = isLargeContextModel ? 80000 : 40000;
-      }
-    }
-    const SUMMARIZE_TOKEN_THRESHOLD = Number(process.env.SUMMARIZE_THRESHOLD ?? threshold);
+    // ── Context Window & Summarization Management ─────────────────────────────
     const nonSystemMsgs = messages.filter(m => m.role !== 'system');
-    if (estimateTokens(nonSystemMsgs) > SUMMARIZE_TOKEN_THRESHOLD) {
-       const sumResult = await summarizeHistory(llmClient, targetModelName, nonSystemMsgs, onEvent, isGroq);
-      if (sumResult) {
-        // Replace messages: keep system prompt + summarized history
-        messages.splice(1, messages.length - 1, ...sumResult.summarized);
-        console.log(`[Agent] Context compressed. New message count: ${messages.length}`);
-        
-        // Write the summarized history back to the database so that subsequent resumes/turns start from this baseline
-        await query(`UPDATE sessions SET history = $1::jsonb WHERE id = $2`, [JSON.stringify(sumResult.summarized), sessionId]).catch((dbErr) => {
-          console.warn('[Agent] Failed to persist summarized history to database:', dbErr.message);
-        });
+    
+    // Only perform automatic compaction if autoSummarize is enabled and strategy is not 'off'
+    if (contextOpts.autoSummarize && contextOpts.summaryStrategy !== 'off') {
+      let threshold = contextOpts.summaryThreshold ? Number(contextOpts.summaryThreshold) : null;
+      if (!threshold) {
+        if (isGroq) {
+          const groqTpmLimit = getGroqTpmLimit(resolvedModel);
+          threshold = Math.floor(groqTpmLimit * 0.70); // 70% of TPM limit (in tokens)
+        } else {
+          const isLargeContextModel = isOpenAI || (resolvedModel && (
+            resolvedModel.includes('13b') || 
+            resolvedModel.includes('14b') || 
+            resolvedModel.includes('32b') || 
+            resolvedModel.includes('70b') || 
+            resolvedModel.includes('e4b')
+          ));
+          threshold = isLargeContextModel ? 80000 : 40000;
+        }
+      }
+      
+      const SUMMARIZE_TOKEN_THRESHOLD = Number(process.env.SUMMARIZE_THRESHOLD ?? threshold);
+      const currentTokenEstimate = estimateTokens(nonSystemMsgs);
+
+      if (currentTokenEstimate > SUMMARIZE_TOKEN_THRESHOLD) {
+        if (contextOpts.summaryStrategy === 'sliding_window') {
+          // Sliding window: keep latest N messages verbatim without making costly LLM summary calls
+          const keepCount = Math.max(2, contextOpts.keepRecentTurns * 2);
+          if (nonSystemMsgs.length > keepCount) {
+            const trimmed = sanitizeHistory(nonSystemMsgs.slice(-keepCount));
+            messages.splice(1, messages.length - 1, ...trimmed);
+            console.log(`[Agent] Sliding window applied: kept last ${trimmed.length} messages (0 extra tokens used).`);
+          }
+        } else if (contextOpts.summaryStrategy === 'rolling_summary') {
+          // Rolling summary: compress older portion with LLM
+          const sumResult = await summarizeHistory(llmClient, targetModelName, nonSystemMsgs, onEvent, {
+            keepRecent: Math.max(2, contextOpts.keepRecentTurns * 2),
+            isGroq
+          });
+          if (sumResult) {
+            // Replace messages: keep system prompt + summarized history
+            messages.splice(1, messages.length - 1, ...sumResult.summarized);
+            console.log(`[Agent] Rolling context summary created. New message count: ${messages.length}`);
+            
+            // Write the summarized history back to the database
+            await query(`UPDATE sessions SET history = $1::jsonb WHERE id = $2`, [JSON.stringify(sumResult.summarized), sessionId]).catch((dbErr) => {
+              console.warn('[Agent] Failed to persist summarized history to database:', dbErr.message);
+            });
+          }
+        }
       }
     }
 

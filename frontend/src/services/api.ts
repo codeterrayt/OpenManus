@@ -119,7 +119,13 @@ export const api = {
     summaryThreshold?: number,
     useMemory?: boolean,
     thinkingBudget?: number | null,
-    reasoningEffort?: string | null
+    reasoningEffort?: string | null,
+    contextOptions?: {
+      autoSummarize?: boolean;
+      maxHistoryTurns?: number;
+      summaryStrategy?: 'sliding_window' | 'rolling_summary' | 'off';
+      keepRecentTurns?: number;
+    }
   ): Promise<void> {
     const res = await fetch(`${API_BASE_URL}/run`, {
       method: 'POST',
@@ -134,7 +140,11 @@ export const api = {
         summaryThreshold, 
         useMemory,
         thinkingBudget,
-        reasoningEffort
+        reasoningEffort,
+        autoSummarize: contextOptions?.autoSummarize,
+        maxHistoryTurns: contextOptions?.maxHistoryTurns,
+        summaryStrategy: contextOptions?.summaryStrategy,
+        keepRecentTurns: contextOptions?.keepRecentTurns,
       }),
       signal,
     });
@@ -209,6 +219,19 @@ export const api = {
   async resetSession(): Promise<void> {
     const res = await fetch(`${API_BASE_URL}/reset`, { method: 'POST' });
     if (!res.ok) throw new Error('Failed to reset backend session');
+  },
+
+  /**
+   * Manually compress/summarize a session's working context history
+   */
+  async summarizeSessionContext(sessionId: string, model?: string, keepRecent?: number): Promise<{ success: boolean; summary?: string; history?: any[] }> {
+    const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/summarize-context`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, keepRecent })
+    });
+    if (!res.ok) throw new Error('Failed to summarize session context');
+    return res.json();
   },
 
   /**

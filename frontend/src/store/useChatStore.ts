@@ -237,6 +237,10 @@ interface ChatState {
   frameLatency: number;   // ms between frame capture and reception
   
   useMemory: boolean;
+  autoSummarize: boolean;
+  maxHistoryTurns: number;
+  summaryStrategy: 'sliding_window' | 'rolling_summary' | 'off';
+  keepRecentTurns: number;
 
   // Actions
   fetchSessions: () => Promise<void>;
@@ -258,6 +262,11 @@ interface ChatState {
   setSelectedAgent: (agent: string) => void;
   setSearchQuery: (query: string) => void;
   setSummaryThreshold: (threshold: number) => void;
+  setAutoSummarize: (enabled: boolean) => void;
+  setMaxHistoryTurns: (turns: number) => void;
+  setSummaryStrategy: (strategy: 'sliding_window' | 'rolling_summary' | 'off') => void;
+  setKeepRecentTurns: (turns: number) => void;
+  summarizeActiveContext: () => Promise<void>;
   setThinkingBudget: (budget: number | null) => void;
   setReasoningEffort: (effort: 'low' | 'medium' | 'high') => void;
   setUseMemory: (use: boolean) => void;
@@ -807,6 +816,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
   selectedAgent: 'OpenManus',
   searchQuery: '',
   summaryThreshold: Number(localStorage.getItem('openmanus_summary_threshold')) || 40000,
+  autoSummarize: localStorage.getItem('openmanus_auto_summarize') !== 'false',
+  maxHistoryTurns: localStorage.getItem('openmanus_max_history_turns') !== null ? Number(localStorage.getItem('openmanus_max_history_turns')) : 10,
+  summaryStrategy: (localStorage.getItem('openmanus_summary_strategy') as 'sliding_window' | 'rolling_summary' | 'off') || 'rolling_summary',
+  keepRecentTurns: Number(localStorage.getItem('openmanus_keep_recent_turns')) || 6,
   thinkingBudget: Number(localStorage.getItem('openmanus_thinking_budget')) || 4096,
   reasoningEffort: (localStorage.getItem('openmanus_reasoning_effort') as 'low' | 'medium' | 'high') || 'medium',
   models: { ollama: [], openai: [], groq: [], custom: [] },
@@ -1006,7 +1019,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
         get().summaryThreshold,
         get().useMemory,
         get().thinkingBudget,
-        get().reasoningEffort
+        get().reasoningEffort,
+        {
+          autoSummarize: get().autoSummarize,
+          maxHistoryTurns: get().maxHistoryTurns,
+          summaryStrategy: get().summaryStrategy,
+          keepRecentTurns: get().keepRecentTurns,
+        }
       );
     } catch (err: any) {
       console.error('[Store] Stream process error:', err);
@@ -1116,6 +1135,41 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setSummaryThreshold: (threshold: number) => {
     localStorage.setItem('openmanus_summary_threshold', String(threshold));
     set({ summaryThreshold: threshold });
+  },
+
+  setAutoSummarize: (enabled: boolean) => {
+    localStorage.setItem('openmanus_auto_summarize', String(enabled));
+    set({ autoSummarize: enabled });
+  },
+
+  setMaxHistoryTurns: (turns: number) => {
+    localStorage.setItem('openmanus_max_history_turns', String(turns));
+    set({ maxHistoryTurns: turns });
+  },
+
+  setSummaryStrategy: (strategy: 'sliding_window' | 'rolling_summary' | 'off') => {
+    localStorage.setItem('openmanus_summary_strategy', strategy);
+    set({ summaryStrategy: strategy });
+  },
+
+  setKeepRecentTurns: (turns: number) => {
+    localStorage.setItem('openmanus_keep_recent_turns', String(turns));
+    set({ keepRecentTurns: turns });
+  },
+
+  summarizeActiveContext: async () => {
+    const activeId = get().activeSessionId;
+    if (!activeId) return;
+    try {
+      const res = await api.summarizeSessionContext(activeId, get().selectedModel, get().keepRecentTurns);
+      if (res.success && Array.isArray(res.history)) {
+        set(state => ({
+          activeSession: state.activeSession ? { ...state.activeSession, history: res.history as any } : null
+        }));
+      }
+    } catch (err) {
+      console.error('[Store] Failed to manually summarize session context:', err);
+    }
   },
 
   setThinkingBudget: (budget: number | null) => {
