@@ -24,6 +24,15 @@ import { readFile, writeFile, appendFile, listDir, deleteFile, makeDir, moveFile
 import { browseWeb, getActiveBrowserState, inspectPageHtml } from './tools/browser.js';
 import { listSkills, getSkill, saveSkill } from './tools/skills.js';
 import { calculateCost } from './utils/pricing.js';
+import {
+  addFactualMemory,
+  addEpisodicMemory,
+  retrieveAgentContext,
+  crystallizeSessionEpisode,
+  queryGraphRelations,
+  searchMemories,
+  getGraphData
+} from './memory/mem0.js';
 
 // ─── LLM Client (Ollama via OpenAI-compatible API) ───────────────────────────
 
@@ -94,7 +103,11 @@ function getToolDefinitions(isGroqModel) {
       list_skills: 'List all saved skills available in the database.',
       get_skill: 'Fetch full payload of a saved skill by name.',
       save_skill: 'Save a new reusable workflow/skill to the database.',
-      remember_info: 'Store a fact in long-term memory.',
+      remember_fact: 'Store a user preference or fact in Mem0 and Knowledge Graph.',
+      remember_episode: 'Record a task outcome and lesson learned in Episodic Memory.',
+      query_knowledge_graph: 'Query entity relationships from Neo4j/PostgreSQL Knowledge Graph.',
+      search_memory: 'Search across all Mem0 memory tiers (factual, episodic, graph).',
+      remember_info: 'Store a fact in Mem0 memory.',
       consolidate_memories: 'Consolidate and summarize memories to save tokens.'
     };
     if (shortDescriptions[t.function.name]) {
@@ -391,8 +404,68 @@ const TOOL_DEFINITIONS = [
   {
     type: 'function',
     function: {
+      name: 'remember_fact',
+      description: 'Store a verified factual piece of information or user preference in Mem0 and update the Knowledge Graph. Use this when the user specifies preferences, credentials, tech stack choices, or environment settings.',
+      parameters: {
+        type: 'object',
+        required: ['fact'],
+        properties: {
+          fact: { type: 'string', description: 'The factual information to store (e.g. "User prefers TailwindCSS over Bootstrap").' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'remember_episode',
+      description: 'Record a task execution episode, key solution, and lessons learned into Mem0 Episodic memory so future sessions learn from this outcome.',
+      parameters: {
+        type: 'object',
+        required: ['goal', 'outcome', 'lesson'],
+        properties: {
+          goal: { type: 'string', description: 'The task goal being executed.' },
+          outcome: { type: 'string', enum: ['success', 'failure'], description: 'Whether the task succeeded or encountered issues.' },
+          lesson: { type: 'string', description: 'Key lesson learned or specific command/config that resolved the issue.' },
+          key_actions: { type: 'array', items: { type: 'string' }, description: 'List of main actions or tools executed.' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'query_knowledge_graph',
+      description: 'Query entity relationships and dependencies in the Neo4j/PostgreSQL Knowledge Graph.',
+      parameters: {
+        type: 'object',
+        required: ['keywords'],
+        properties: {
+          keywords: { type: 'array', items: { type: 'string' }, description: 'Keywords or entity names to search relationships for (e.g. ["User", "PostgreSQL", "Docker"]).' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_memory',
+      description: 'Search across all Mem0 memory tiers (factual, episodic, graph, context) using keyword query.',
+      parameters: {
+        type: 'object',
+        required: ['query'],
+        properties: {
+          query: { type: 'string', description: 'Search term or question to find relevant memories for.' },
+          type: { type: 'string', enum: ['all', 'factual', 'episodic', 'context', 'long_term'], description: 'Memory tier filter (default: all).' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'remember_info',
-      description: 'Store a useful piece of information or fact in long-term memory so that it is available globally across all chats. Use this when the user explicitly asks you to remember something, or when you discover important facts/configurations/keys/user-preferences that will be useful in future sessions.',
+      description: 'Store a useful piece of information or fact in long-term memory. Alias for remember_fact.',
       parameters: {
         type: 'object',
         required: ['info'],
@@ -469,13 +542,25 @@ async function dispatchTool(toolName, args, llmClient, targetModelName, sessionI
       await saveSkill(args);
       return `Skill "${args.name}" saved successfully.`;
     }
+    case 'remember_fact': {
+      const fact = await addFactualMemory(args.fact, {}, sessionId);
+      return JSON.stringify({ success: true, message: `Fact recorded in Mem0 & Knowledge Graph: "${args.fact}"`, id: fact?.id });
+    }
+    case 'remember_episode': {
+      const ep = await addEpisodicMemory(args.goal, args.outcome, args.key_actions || [], args.lesson, sessionId);
+      return JSON.stringify({ success: true, message: `Episodic memory created for "${args.goal}"`, id: ep?.id });
+    }
+    case 'query_knowledge_graph': {
+      const relations = await queryGraphRelations(args.keywords || []);
+      return JSON.stringify({ success: true, count: relations.length, relations });
+    }
+    case 'search_memory': {
+      const results = await searchMemories({ type: args.type || 'all', sessionId, queryText: args.query, limit: 10 });
+      return JSON.stringify({ success: true, count: results.length, memories: results });
+    }
     case 'remember_info': {
-      if (sessionId) {
-        await query(`INSERT INTO memories (content, session_id) VALUES ($1, $2)`, [args.info, sessionId]);
-      } else {
-        await query(`INSERT INTO memories (content) VALUES ($1)`, [args.info]);
-      }
-      return JSON.stringify({ success: true, message: `Successfully remembered: "${args.info}"` });
+      const fact = await addFactualMemory(args.info, {}, sessionId);
+      return JSON.stringify({ success: true, message: `Successfully remembered: "${args.info}"`, id: fact?.id });
     }
     case 'consolidate_memories': {
       if (!llmClient) {
@@ -1367,26 +1452,18 @@ Before you call any browse_web action (except 'extract_text' or 'screenshot'), y
 4. If browse_web returns an error (e.g. element not found or not clickable), DO NOT repeat the same call. You must run inspect_page_html again with a different query to find the correct element or use evaluate to click it via JS.`;
   }
 
-  // Inject long-term memories if enabled
+  // Inject Mem0 multi-tier memories if enabled (Factual, Episodic, Graph)
   if (useMemory) {
     try {
-      const memories = sessionId
-        ? await query(`SELECT content FROM memories WHERE session_id IS NULL OR session_id = $1 ORDER BY created_at ASC`, [sessionId])
-        : await query(`SELECT content FROM memories WHERE session_id IS NULL ORDER BY created_at ASC`);
-      if (memories.length > 0) {
-        const memoryText = memories.map((m, index) => {
-          const content = m.content.length > 400 ? m.content.slice(0, 400) + '...' : m.content;
-          return `${index + 1}. ${content}`;
-        }).join('\n');
-        systemPrompt += `\n\n### GLOBAL REMEMBERED FACTS (LONG-TERM MEMORY)\n` +
-          `The following useful facts/details have been remembered from past conversations. Use them to guide your decisions, configurations, or responses:\n` +
-          `${memoryText}`;
-        console.log(`[Agent] Injected ${memories.length} global memories into system prompt.`);
+      const mem0Context = await retrieveAgentContext(goal, sessionId);
+      if (mem0Context) {
+        systemPrompt += mem0Context;
+        console.log(`[Agent] Injected Mem0 Multi-Tier Context (Factual, Episodic, Graph) into system prompt.`);
       } else {
-        console.log(`[Agent] Memory enabled, but no global memories found in database.`);
+        console.log(`[Agent] Memory enabled, but no prior Mem0 knowledge found.`);
       }
     } catch (memErr) {
-      console.warn(`[Agent] Failed to retrieve global memories:`, memErr.message);
+      console.warn(`[Agent] Failed to retrieve Mem0 context:`, memErr.message);
     }
   }
 
@@ -1944,6 +2021,13 @@ Do NOT proceed past this step until "${toolName}" succeeds.`,
   await finaliseSession(sessionId, 'done', finalAnswer);
   onEvent('done', { sessionId, result: finalAnswer });
   console.log(`[Agent] Session ${sessionId} complete`);
+
+  // Mem0: Automatically crystallize task execution into an Episodic Memory and update Knowledge Graph
+  if (useMemory && sessionId) {
+    crystallizeSessionEpisode(sessionId, goal, messages, finalAnswer, 'done').catch(e => {
+      console.warn('[Agent] Auto-crystallize episode failed:', e.message);
+    });
+  }
 
   return { sessionId, result: finalAnswer };
   } finally {

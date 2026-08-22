@@ -75,16 +75,65 @@ export async function initDb() {
       CREATE TABLE IF NOT EXISTS memories (
         id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
         created_at  TIMESTAMPTZ NOT NULL    DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ NOT NULL    DEFAULT NOW(),
         content     TEXT        NOT NULL,
-        session_id  UUID        REFERENCES sessions(id) ON DELETE CASCADE
+        type        TEXT        NOT NULL    DEFAULT 'factual',
+        entities    JSONB       NOT NULL    DEFAULT '[]'::jsonb,
+        metadata    JSONB       NOT NULL    DEFAULT '{}'::jsonb,
+        session_id  UUID        REFERENCES sessions(id) ON DELETE CASCADE,
+        agent_id    TEXT
       );
     `);
+    await query(`ALTER TABLE memories ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'factual';`).catch(() => {});
+    await query(`ALTER TABLE memories ADD COLUMN IF NOT EXISTS entities JSONB NOT NULL DEFAULT '[]'::jsonb;`).catch(() => {});
+    await query(`ALTER TABLE memories ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb;`).catch(() => {});
+    await query(`ALTER TABLE memories ADD COLUMN IF NOT EXISTS agent_id TEXT;`).catch(() => {});
+    await query(`ALTER TABLE memories ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`).catch(() => {});
+    await query(`ALTER TABLE memories ADD COLUMN IF NOT EXISTS session_id UUID REFERENCES sessions(id) ON DELETE CASCADE;`).catch(() => {});
+    await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS system_prompt TEXT;`).catch(() => {});
+    await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS title TEXT;`).catch(() => {});
+
+    // ── Knowledge Graph Fallback Tables (Entity-Relation Property Graph) ──────
     await query(`
-      ALTER TABLE memories ADD COLUMN IF NOT EXISTS session_id UUID REFERENCES sessions(id) ON DELETE CASCADE;
-    `).catch(() => {});
+      CREATE TABLE IF NOT EXISTS memory_nodes (
+        id          TEXT        PRIMARY KEY,
+        name        TEXT        NOT NULL,
+        label       TEXT        NOT NULL DEFAULT 'Entity',
+        properties  JSONB       NOT NULL DEFAULT '{}'::jsonb,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
     await query(`
-      ALTER TABLE sessions ADD COLUMN IF NOT EXISTS system_prompt TEXT;
-    `).catch(() => {});
+      CREATE TABLE IF NOT EXISTS memory_edges (
+        id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        source_id     TEXT        NOT NULL REFERENCES memory_nodes(id) ON DELETE CASCADE,
+        target_id     TEXT        NOT NULL REFERENCES memory_nodes(id) ON DELETE CASCADE,
+        relation_type TEXT        NOT NULL,
+        properties    JSONB       NOT NULL DEFAULT '{}'::jsonb,
+        weight        REAL        NOT NULL DEFAULT 1.0,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS memory_edges_source_idx ON memory_edges(source_id);`).catch(() => {});
+    await query(`CREATE INDEX IF NOT EXISTS memory_edges_target_idx ON memory_edges(target_id);`).catch(() => {});
+    await query(`CREATE INDEX IF NOT EXISTS memory_edges_relation_idx ON memory_edges(relation_type);`).catch(() => {});
+
+    // ── Episodic Memory Table ────────────────────────────────────────────────
+    await query(`
+      CREATE TABLE IF NOT EXISTS memory_episodes (
+        id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        session_id      UUID        REFERENCES sessions(id) ON DELETE SET NULL,
+        goal            TEXT        NOT NULL,
+        outcome         TEXT        NOT NULL DEFAULT 'success',
+        key_actions     JSONB       NOT NULL DEFAULT '[]'::jsonb,
+        lessons_learned TEXT,
+        metadata        JSONB       NOT NULL DEFAULT '{}'::jsonb,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS memory_episodes_session_idx ON memory_episodes(session_id);`).catch(() => {});
 
     // ── env_settings table ────────────────────────────────────────────────────
     await query(`
@@ -107,6 +156,10 @@ export async function initDb() {
       ['OPENAI_ENABLED',          'false'],
       ['OPENAI_API_KEY',          ''],
       ['OPENAI_BASE_URL',         'https://api.openai.com/v1'],
+      ['NEO4J_ENABLED',           'true'],
+      ['NEO4J_URL',               'bolt://localhost:7687'],
+      ['NEO4J_USER',              'neo4j'],
+      ['NEO4J_PASSWORD',          'openmanus_password'],
       ['MAX_STEPS',               '100'],
       ['MAX_TOOL_RESULT_CHARS',   '3000'],
       ['CLOAKBROWSER_API_URL',    'http://localhost:9000'],
@@ -120,7 +173,7 @@ export async function initDb() {
       );
     }
 
-    console.log('[DB] Memories table checked/created.');
+    console.log('[DB] Mem0 Multi-Tier Memory tables & Knowledge Graph schema initialized.');
     console.log('[DB] env_settings table checked/created.');
   } catch (err) {
     console.error('[DB] Failed to initialize database tables:', err.message);

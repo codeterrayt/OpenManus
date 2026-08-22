@@ -95,6 +95,60 @@ CREATE INDEX IF NOT EXISTS skills_usage_idx ON skills (usage_count DESC);
 -- =============================================================================
 --  Seed: built-in skills the agent ships with
 -- =============================================================================
+-- =============================================================================
+--  MEM0 MULTI-TIER MEMORIES & KNOWLEDGE GRAPH
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS memories (
+    id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at    TIMESTAMPTZ NOT NULL    DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL    DEFAULT NOW(),
+    content       TEXT        NOT NULL,
+    type          TEXT        NOT NULL    DEFAULT 'factual', -- 'factual' | 'episodic' | 'context' | 'long_term' | 'graph'
+    entities      JSONB       NOT NULL    DEFAULT '[]'::jsonb,
+    metadata      JSONB       NOT NULL    DEFAULT '{}'::jsonb,
+    session_id    UUID        REFERENCES sessions(id) ON DELETE CASCADE,
+    agent_id      TEXT
+);
+
+CREATE INDEX IF NOT EXISTS memories_type_idx ON memories (type);
+CREATE INDEX IF NOT EXISTS memories_session_idx ON memories (session_id);
+
+CREATE TABLE IF NOT EXISTS memory_nodes (
+    id          TEXT        PRIMARY KEY,
+    name        TEXT        NOT NULL,
+    label       TEXT        NOT NULL DEFAULT 'Entity',
+    properties  JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS memory_edges (
+    id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    source_id     TEXT        NOT NULL REFERENCES memory_nodes(id) ON DELETE CASCADE,
+    target_id     TEXT        NOT NULL REFERENCES memory_nodes(id) ON DELETE CASCADE,
+    relation_type TEXT        NOT NULL,
+    properties    JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    weight        REAL        NOT NULL DEFAULT 1.0,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS memory_edges_source_idx ON memory_edges(source_id);
+CREATE INDEX IF NOT EXISTS memory_edges_target_idx ON memory_edges(target_id);
+CREATE INDEX IF NOT EXISTS memory_edges_relation_idx ON memory_edges(relation_type);
+
+CREATE TABLE IF NOT EXISTS memory_episodes (
+    id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id      UUID        REFERENCES sessions(id) ON DELETE SET NULL,
+    goal            TEXT        NOT NULL,
+    outcome         TEXT        NOT NULL DEFAULT 'success',
+    key_actions     JSONB       NOT NULL DEFAULT '[]'::jsonb,
+    lessons_learned TEXT,
+    metadata        JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS memory_episodes_session_idx ON memory_episodes(session_id);
+
 INSERT INTO skills (name, description, payload, tags) VALUES
 (
     'run_python',

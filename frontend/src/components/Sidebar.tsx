@@ -9,8 +9,6 @@ import {
   Loader2,
   Settings,
   Brain,
-  Trash2,
-  Edit3,
   X,
   PanelLeftClose,
   KeyRound,
@@ -21,6 +19,7 @@ import { useChatStore } from '../store/useChatStore';
 import { api } from '../services/api';
 import type { HealthResponse } from '../services/api';
 import { EnvSettings } from './EnvSettings';
+import { MemoryExplorer } from './MemoryExplorer';
 
 export const Sidebar: React.FC = () => {
   const {
@@ -41,77 +40,6 @@ export const Sidebar: React.FC = () => {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'general' | 'memory' | 'environment'>('general');
-  const [memories, setMemories] = useState<Array<{ id: string; created_at: string; content: string }>>([]);
-  const [newMemoryText, setNewMemoryText] = useState('');
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingText, setEditingText] = useState('');
-  const [isSummarizingMemories, setIsSummarizingMemories] = useState(false);
-  const [showDeleteAllWarning, setShowDeleteAllWarning] = useState(false);
-
-  useEffect(() => {
-    if (showSettings) {
-      api.getMemories().then(setMemories).catch(err => console.error('[Sidebar] Error loading memories:', err));
-    }
-  }, [showSettings]);
-
-  const handleAddMemory = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newMemoryText.trim()) return;
-    try {
-      const added = await api.addMemory(newMemoryText.trim());
-      setMemories(prev => [added, ...prev]);
-      setNewMemoryText('');
-    } catch (err) {
-      console.error('[Sidebar] Failed to add memory:', err);
-    }
-  };
-
-  const handleStartEdit = (id: string, text: string) => {
-    setEditingId(id);
-    setEditingText(text);
-  };
-
-  const handleSaveEdit = async (id: string) => {
-    if (!editingText.trim()) return;
-    try {
-      const updated = await api.updateMemory(id, editingText.trim());
-      setMemories(prev => prev.map(m => m.id === id ? updated : m));
-      setEditingId(null);
-    } catch (err) {
-      console.error('[Sidebar] Failed to update memory:', err);
-    }
-  };
-
-  const handleDeleteMemory = async (id: string) => {
-    try {
-      await api.deleteMemory(id);
-      setMemories(prev => prev.filter(m => m.id !== id));
-    } catch (err) {
-      console.error('[Sidebar] Failed to delete memory:', err);
-    }
-  };
-
-  const handleSummarizeMemories = async () => {
-    setIsSummarizingMemories(true);
-    try {
-      const res = await api.summarizeMemories(selectedModel);
-      setMemories(res.memories);
-    } catch (err) {
-      console.error('[Sidebar] Failed to summarize memories:', err);
-    } finally {
-      setIsSummarizingMemories(false);
-    }
-  };
-
-  const handleDeleteAllMemories = async () => {
-    try {
-      await api.deleteAllMemories();
-      setMemories([]);
-      setShowDeleteAllWarning(false);
-    } catch (err) {
-      console.error('[Sidebar] Failed to delete all memories:', err);
-    }
-  };
 
   // Load sessions and check health periodically
   useEffect(() => {
@@ -403,7 +331,7 @@ export const Sidebar: React.FC = () => {
                 }`}
               >
                 <Brain className="w-3.5 h-3.5" />
-                <span>Memory Knowledge ({memories.length})</span>
+                <span>Mem0 Memory & Graph</span>
               </button>
               <button
                 type="button"
@@ -465,129 +393,10 @@ export const Sidebar: React.FC = () => {
                 </div>
               )}
 
-              {/* Tab: Memory */}
+              {/* Tab: Mem0 Multi-Tier & Knowledge Graph Explorer */}
               {settingsTab === 'memory' && (
                 <div className="space-y-4">
-                  {/* Add memory form */}
-                  <form onSubmit={handleAddMemory} className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="Add a new fact or instruction for the agent to remember..."
-                      value={newMemoryText}
-                      onChange={(e) => setNewMemoryText(e.target.value)}
-                      className="flex-1 bg-[#131724] text-white text-xs px-3 py-2 rounded-xl border border-white/[0.08] focus:border-indigo-500 focus:outline-none placeholder:text-slate-500"
-                    />
-                    <button
-                      type="submit"
-                      disabled={!newMemoryText.trim()}
-                      className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-xs rounded-xl transition-all active:scale-95 cursor-pointer"
-                    >
-                      Add Fact
-                    </button>
-                  </form>
-
-                  {/* Actions Header */}
-                  <div className="flex items-center justify-between pt-1">
-                    <span className="text-xs font-semibold text-slate-300">
-                      Stored Memories ({memories.length})
-                    </span>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={handleSummarizeMemories}
-                        disabled={isSummarizingMemories || memories.length === 0}
-                        className="px-2.5 py-1 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 text-indigo-300 rounded-lg text-xs font-medium transition-colors flex items-center gap-1"
-                      >
-                        {isSummarizingMemories ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                        <span>AI Summarize</span>
-                      </button>
-
-                      {memories.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => setShowDeleteAllWarning(true)}
-                          className="px-2.5 py-1 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-400 rounded-lg text-xs font-medium transition-colors flex items-center gap-1"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                          <span>Clear All</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Memories List */}
-                  <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
-                    {memories.length === 0 ? (
-                      <div className="text-center py-8 text-xs text-slate-500">
-                        No persistent memories stored yet.
-                      </div>
-                    ) : (
-                      memories.map((m) => {
-                        const isEditing = editingId === m.id;
-                        return (
-                          <div
-                            key={m.id}
-                            className="p-3 rounded-xl bg-[#131724] border border-white/[0.06] flex items-start justify-between gap-3 text-xs"
-                          >
-                            <div className="flex-1 min-w-0">
-                              {isEditing ? (
-                                <div className="space-y-2">
-                                  <textarea
-                                    value={editingText}
-                                    onChange={(e) => setEditingText(e.target.value)}
-                                    className="w-full bg-[#0C0F18] text-white text-xs p-2 rounded-lg border border-white/[0.1] focus:outline-none"
-                                    rows={2}
-                                  />
-                                  <div className="flex gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleSaveEdit(m.id)}
-                                      className="px-2.5 py-1 rounded bg-indigo-600 text-white font-semibold text-[11px]"
-                                    >
-                                      Save
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => setEditingId(null)}
-                                      className="px-2.5 py-1 rounded bg-white/[0.05] text-slate-400 text-[11px]"
-                                    >
-                                      Cancel
-                                    </button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div>
-                                  <p className="text-slate-200 leading-relaxed select-text">{m.content}</p>
-                                  <span className="text-[10px] text-slate-500 font-mono mt-1 block">
-                                    {new Date(m.created_at).toLocaleDateString()}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-
-                            {!isEditing && (
-                              <div className="flex items-center gap-1 shrink-0">
-                                <button
-                                  type="button"
-                                  onClick={() => handleStartEdit(m.id, m.content)}
-                                  className="p-1 text-slate-500 hover:text-white rounded hover:bg-white/[0.06]"
-                                >
-                                  <Edit3 className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteMemory(m.id)}
-                                  className="p-1 text-slate-500 hover:text-rose-400 rounded hover:bg-rose-500/10"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
+                  <MemoryExplorer selectedModel={selectedModel} onClose={() => setShowSettings(false)} />
                 </div>
               )}
 
@@ -607,38 +416,6 @@ export const Sidebar: React.FC = () => {
                 className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs rounded-xl shadow-sm transition-all active:scale-95 cursor-pointer"
               >
                 Done
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-
-      {/* Clear All Confirmation Modal */}
-      {showDeleteAllWarning && createPortal(
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-          <div className="w-full max-w-sm bg-[#121622] border border-rose-500/30 rounded-2xl p-5 shadow-2xl space-y-3">
-            <h4 className="font-bold text-sm text-rose-400 flex items-center gap-2">
-              <Trash2 className="w-4 h-4" />
-              <span>Delete All Memories?</span>
-            </h4>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              This will permanently delete all {memories.length} stored facts. The agent will lose all customized memory.
-            </p>
-            <div className="flex gap-2 justify-end pt-2">
-              <button
-                type="button"
-                onClick={() => setShowDeleteAllWarning(false)}
-                className="px-3 py-1.5 rounded-lg border border-white/[0.08] text-xs text-slate-400 hover:text-white"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleDeleteAllMemories}
-                className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold"
-              >
-                Yes, Delete All
               </button>
             </div>
           </div>

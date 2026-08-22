@@ -18,6 +18,13 @@ import { browserEvents, handleUserAction, setScreencastQuality, closeBrowser } f
 import { cleanupSandbox } from './tools/docker.js';
 import { findWorkspaceFiles, readFile } from './tools/docker_fs.js';
 import { detectModelCapabilities } from './utils/modelCapabilities.js';
+import { 
+  addMemory, 
+  searchMemories, 
+  getGraphData, 
+  queryGraphRelations, 
+  crystallizeSessionEpisode 
+} from './memory/mem0.js';
 import envRouter from './routes/env.js';
 
 const app = express();
@@ -580,10 +587,108 @@ app.post('/reset', async (req, res) => {
 });
 
 // ─── Memory Management APIs ──────────────────────────────────────────────────
-app.get('/memories', async (_req, res) => {
+// ─── Mem0 Multi-Tier Memory & Knowledge Graph APIs ───────────────────────────
+app.get('/memories', async (req, res) => {
   try {
-    const { rows } = await getPool().query('SELECT * FROM memories ORDER BY created_at DESC');
+    const { type, q, sessionId, limit } = req.query;
+    const rows = await searchMemories({
+      type: type || 'all',
+      sessionId: sessionId || null,
+      queryText: q || '',
+      limit: limit ? Number(limit) : 100
+    });
     res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/memories/graph', async (_req, res) => {
+  try {
+    const graphData = await getGraphData();
+    res.json(graphData);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/memories/graph/query', async (req, res) => {
+  const { keywords } = req.body ?? {};
+  try {
+    const relations = await queryGraphRelations(keywords || []);
+    res.json({ relations });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/memories/crystallize', async (req, res) => {
+  const { sessionId, goal, history, result, status } = req.body ?? {};
+  try {
+    const ep = await crystallizeSessionEpisode(sessionId, goal, history, result, status || 'done');
+    res.json({ success: true, episode: ep });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/memories', async (req, res) => {
+  const { content, type, metadata, sessionId, agentId } = req.body ?? {};
+  if (!content || typeof content !== 'string') {
+    return res.status(400).json({ error: 'Body must contain a "content" string.' });
+  }
+  try {
+    const mem = await addMemory(content, type || 'factual', metadata || {}, sessionId, agentId);
+    res.json(mem);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/memories/:id', async (req, res) => {
+  const { content, type, metadata } = req.body ?? {};
+  if (!content || typeof content !== 'string') {
+    return res.status(400).json({ error: 'Body must contain a "content" string.' });
+  }
+  try {
+    const { rows } = await getPool().query(
+      `UPDATE memories SET 
+        content = $1, 
+        type = COALESCE($2, type),
+        metadata = COALESCE($3::jsonb, metadata),
+        updated_at = NOW() 
+       WHERE id = $4 RETURNING *`,
+      [content, type, metadata ? JSON.stringify(metadata) : null, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Memory not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/memories/:id', async (req, res) => {
+  try {
+    const result = await getPool().query('DELETE FROM memories WHERE id = $1', [req.params.id]);
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Memory not found' });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/memories', async (req, res) => {
+  try {
+    const { type } = req.query;
+    if (type && type !== 'all') {
+      await getPool().query('DELETE FROM memories WHERE type = $1', [type]);
+    } else {
+      await getPool().query('DELETE FROM memories');
+      await getPool().query('DELETE FROM memory_edges').catch(() => {});
+      await getPool().query('DELETE FROM memory_nodes').catch(() => {});
+      await getPool().query('DELETE FROM memory_episodes').catch(() => {});
+    }
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -655,7 +760,7 @@ app.post('/memories/summarize', async (req, res) => {
       });
     }
 
-    const { rows: memories } = await getPool().query('SELECT * FROM memories ORDER BY created_at DESC');
+    const { rows: memories } = await getPool().query("SELECT * FROM memories WHERE type = 'factual' OR type IS NULL ORDER BY created_at DESC");
     if (memories.length === 0) {
       return res.json({ success: true, memories: [] });
     }
@@ -714,9 +819,9 @@ Do NOT return any other text, markdown formatting (no backticks), or introductio
       const client = await getPool().connect();
       try {
         await client.query('BEGIN');
-        await client.query('DELETE FROM memories');
+        await client.query("DELETE FROM memories WHERE type = 'factual' OR type IS NULL");
         for (const content of newMemories) {
-          await client.query('INSERT INTO memories (content) VALUES ($1)', [content]);
+          await client.query("INSERT INTO memories (content, type) VALUES ($1, 'factual')", [content]);
         }
         await client.query('COMMIT');
       } catch (txErr) {
@@ -731,58 +836,6 @@ Do NOT return any other text, markdown formatting (no backticks), or introductio
     res.json({ success: true, memories: rows });
   } catch (err) {
     console.error('[Memory Summary] Error summarizing memories:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.delete('/memories', async (_req, res) => {
-  try {
-    await getPool().query('DELETE FROM memories');
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/memories', async (req, res) => {
-  const { content } = req.body ?? {};
-  if (!content || typeof content !== 'string') {
-    return res.status(400).json({ error: 'Body must contain a "content" string.' });
-  }
-  try {
-    const { rows } = await getPool().query(
-      'INSERT INTO memories (content) VALUES ($1) RETURNING *',
-      [content]
-    );
-    res.json(rows[0]);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.put('/memories/:id', async (req, res) => {
-  const { content } = req.body ?? {};
-  if (!content || typeof content !== 'string') {
-    return res.status(400).json({ error: 'Body must contain a "content" string.' });
-  }
-  try {
-    const { rows } = await getPool().query(
-      'UPDATE memories SET content = $1 WHERE id = $2 RETURNING *',
-      [content, req.params.id]
-    );
-    if (!rows.length) return res.status(404).json({ error: 'Memory not found' });
-    res.json(rows[0]);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.delete('/memories/:id', async (req, res) => {
-  try {
-    const result = await getPool().query('DELETE FROM memories WHERE id = $1', [req.params.id]);
-    if (result.rowCount === 0) return res.status(404).json({ error: 'Memory not found' });
-    res.json({ success: true });
-  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });

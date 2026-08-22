@@ -212,22 +212,68 @@ export const api = {
   },
 
   /**
-   * Fetch all global memory items
+   * Fetch all global memory items (supports type filter and search query)
    */
-  async getMemories(): Promise<Array<{ id: string; created_at: string; content: string }>> {
-    const res = await fetch(`${API_BASE_URL}/memories`);
+  async getMemories(params?: { type?: string; q?: string; sessionId?: string }): Promise<Array<{
+    id: string;
+    created_at: string;
+    updated_at?: string;
+    content: string;
+    type?: 'factual' | 'episodic' | 'context' | 'long_term' | 'graph';
+    entities?: string[];
+    metadata?: Record<string, any>;
+  }>> {
+    const searchParams = new URLSearchParams();
+    if (params?.type) searchParams.set('type', params.type);
+    if (params?.q) searchParams.set('q', params.q);
+    if (params?.sessionId) searchParams.set('sessionId', params.sessionId);
+
+    const queryStr = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    const res = await fetch(`${API_BASE_URL}/memories${queryStr}`);
     if (!res.ok) throw new Error('Failed to fetch memories');
     return res.json();
   },
 
   /**
-   * Add a new memory item manually
+   * Fetch Knowledge Graph data (nodes and edges)
    */
-  async addMemory(content: string): Promise<{ id: string; created_at: string; content: string }> {
+  async getGraphData(): Promise<{
+    provider: 'neo4j' | 'postgresql';
+    nodes: Array<{ id: string; name: string; label: string }>;
+    edges: Array<{ id: string; source: string; target: string; relation: string; weight?: number }>;
+  }> {
+    const res = await fetch(`${API_BASE_URL}/memories/graph`);
+    if (!res.ok) throw new Error('Failed to fetch graph data');
+    return res.json();
+  },
+
+  /**
+   * Query Knowledge Graph relations for given keywords
+   */
+  async queryGraph(keywords: string[]): Promise<{ relations: Array<{ source: string; relation: string; target: string }> }> {
+    const res = await fetch(`${API_BASE_URL}/memories/graph/query`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keywords })
+    });
+    if (!res.ok) throw new Error('Failed to query graph relations');
+    return res.json();
+  },
+
+  /**
+   * Add a new memory item manually with optional tier type
+   */
+  async addMemory(content: string, type: string = 'factual', metadata?: Record<string, any>): Promise<{
+    id: string;
+    created_at: string;
+    content: string;
+    type?: string;
+    entities?: string[];
+  }> {
     const res = await fetch(`${API_BASE_URL}/memories`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content })
+      body: JSON.stringify({ content, type, metadata })
     });
     if (!res.ok) throw new Error('Failed to add memory');
     return res.json();
@@ -236,11 +282,11 @@ export const api = {
   /**
    * Edit/update an existing memory item
    */
-  async updateMemory(id: string, content: string): Promise<{ id: string; created_at: string; content: string }> {
+  async updateMemory(id: string, content: string, type?: string): Promise<{ id: string; created_at: string; content: string; type?: string }> {
     const res = await fetch(`${API_BASE_URL}/memories/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content })
+      body: JSON.stringify({ content, type })
     });
     if (!res.ok) throw new Error('Failed to update memory');
     return res.json();
@@ -255,14 +301,15 @@ export const api = {
   },
 
   /**
-   * Delete all memory items
+   * Delete all memory items (or specific type)
    */
-  async deleteAllMemories(): Promise<void> {
-    const res = await fetch(`${API_BASE_URL}/memories`, { method: 'DELETE' });
-    if (!res.ok) throw new Error('Failed to delete all memories');
+  async deleteAllMemories(type?: string): Promise<void> {
+    const url = type ? `${API_BASE_URL}/memories?type=${encodeURIComponent(type)}` : `${API_BASE_URL}/memories`;
+    const res = await fetch(url, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Failed to delete memories');
   },
 
-  async summarizeMemories(model?: string): Promise<{ success: boolean; memories: Array<{ id: string; created_at: string; content: string }> }> {
+  async summarizeMemories(model?: string): Promise<{ success: boolean; memories: Array<{ id: string; created_at: string; content: string; type?: string }> }> {
     const res = await fetch(`${API_BASE_URL}/memories/summarize`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
