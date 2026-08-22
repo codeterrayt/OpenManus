@@ -50,6 +50,17 @@ async function getNeo4jDriver() {
   return _neo4jAvailable ? _neo4jDriver : null;
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * Validates and normalizes session UUID. Returns null if invalid or not a UUID.
+ */
+function sanitizeSessionId(id) {
+  if (!id || typeof id !== 'string') return null;
+  const clean = id.trim();
+  return UUID_REGEX.test(clean) ? clean : null;
+}
+
 /**
  * Normalizes entity name to safe ID
  */
@@ -369,8 +380,15 @@ export async function queryGraphRelations(keywords) {
  * ─── Multi-Tier Memory API ───────────────────────────────────────────────────
  */
 
+const STOP_WORDS = new Set([
+  'what', 'is', 'the', 'my', 'your', 'and', 'or', 'for', 'about', 'tell', 'check',
+  'show', 'find', 'get', 'any', 'me', 'who', 'how', 'when', 'where', 'why', 'can',
+  'you', 'please', 'do', 'does', 'did', 'i', 'a', 'an', 'in', 'on', 'at', 'to', 'of',
+  'memory', 'memories', 'remember', 'recall', 'stored', 'saved', 'database', 'know'
+]);
+
 /**
- * Adds a memory (factual, episodic, context, long_term).
+ * Adds a memory (factual, episodic, context, long_term) with deduplication.
  */
 export async function addMemory(content, type = 'factual', metadata = {}, sessionId = null, agentId = null) {
   if (!content || !content.trim()) return null;
@@ -378,11 +396,30 @@ export async function addMemory(content, type = 'factual', metadata = {}, sessio
   const triples = extractTriples(cleanContent);
   const entities = Array.from(new Set(triples.flatMap(t => [t.source.name, t.target.name])));
 
+  // Deduplicate identical content for factual/preferences
+  const existing = await query(
+    `SELECT id FROM memories WHERE type = $1 AND LOWER(TRIM(content)) = LOWER(TRIM($2)) LIMIT 1`,
+    [type, cleanContent]
+  ).catch(() => []);
+
+  if (existing.length > 0) {
+    const updated = await query(
+      `UPDATE memories SET entities = $1::jsonb, metadata = $2::jsonb, updated_at = NOW() WHERE id = $3 RETURNING *`,
+      [JSON.stringify(entities), JSON.stringify(metadata), existing[0].id]
+    );
+    if (triples.length > 0) {
+      await saveTriples(triples).catch(e => console.warn('[Mem0] Triple save error:', e.message));
+    }
+    return updated[0];
+  }
+
+  const cleanSessionId = sanitizeSessionId(sessionId);
+
   const rows = await query(
     `INSERT INTO memories (content, type, entities, metadata, session_id, agent_id, updated_at)
      VALUES ($1, $2, $3::jsonb, $4::jsonb, $5, $6, NOW())
      RETURNING *`,
-    [cleanContent, type, JSON.stringify(entities), JSON.stringify(metadata), sessionId, agentId]
+    [cleanContent, type, JSON.stringify(entities), JSON.stringify(metadata), cleanSessionId, agentId]
   );
 
   if (triples.length > 0) {
@@ -404,6 +441,7 @@ export async function addFactualMemory(content, metadata = {}, sessionId = null,
  */
 export async function addEpisodicMemory(goal, outcome, keyActions = [], lessonsLearned = '', sessionId = null, metadata = {}) {
   const cleanGoal = (goal || '').trim();
+  const cleanSessionId = sanitizeSessionId(sessionId);
   const content = `Task Episode: "${cleanGoal}" | Outcome: ${outcome.toUpperCase()}\nActions: ${Array.isArray(keyActions) ? keyActions.join(', ') : keyActions}\nLessons Learned: ${lessonsLearned}`;
 
   const triples = extractTriples(content);
@@ -419,14 +457,14 @@ export async function addEpisodicMemory(goal, outcome, keyActions = [], lessonsL
     `INSERT INTO memory_episodes (session_id, goal, outcome, key_actions, lessons_learned, metadata)
      VALUES ($1, $2, $3, $4::jsonb, $5, $6::jsonb)
      RETURNING *`,
-    [sessionId, cleanGoal, outcome, JSON.stringify(keyActions), lessonsLearned, JSON.stringify(metadata)]
+    [cleanSessionId, cleanGoal, outcome, JSON.stringify(keyActions), lessonsLearned, JSON.stringify(metadata)]
   );
 
   const memRows = await query(
     `INSERT INTO memories (content, type, entities, metadata, session_id, updated_at)
      VALUES ($1, 'episodic', $2::jsonb, $3::jsonb, $4, NOW())
      RETURNING *`,
-    [content, JSON.stringify(entities), JSON.stringify({ ...metadata, episode_id: epRows[0]?.id }), sessionId]
+    [content, JSON.stringify(entities), JSON.stringify({ ...metadata, episode_id: epRows[0]?.id }), cleanSessionId]
   );
 
   await saveTriples(triples).catch(e => console.warn('[Mem0] Episode triple save error:', e.message));
@@ -435,7 +473,7 @@ export async function addEpisodicMemory(goal, outcome, keyActions = [], lessonsL
 }
 
 /**
- * Searches across multi-tier memories with type filtering and search query.
+ * Searches across multi-tier memories with tokenized matching and global factual access.
  */
 export async function searchMemories({ type = 'all', sessionId = null, queryText = '', limit = 50 } = {}) {
   const conditions = [];
@@ -446,24 +484,49 @@ export async function searchMemories({ type = 'all', sessionId = null, queryText
     conditions.push(`type = $${params.length}`);
   }
 
-  if (sessionId) {
+  // Factual and episodic memories are global; only context memories are session-scoped
+  if (sessionId && type === 'context') {
     params.push(sessionId);
-    conditions.push(`(session_id IS NULL OR session_id = $${params.length})`);
+    conditions.push(`session_id = $${params.length}`);
   }
 
-  if (queryText && queryText.trim()) {
-    params.push('%' + queryText.trim().toLowerCase() + '%');
-    conditions.push(`(LOWER(content) LIKE $${params.length} OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(entities) e WHERE LOWER(e) LIKE $${params.length}))`);
+  if (queryText && typeof queryText === 'string') {
+    const rawTokens = queryText
+      .toLowerCase()
+      .replace(/[^a-z0-9_\s-]/g, ' ')
+      .split(/\s+/)
+      .filter(t => t.length >= 2);
+
+    const meaningfulTokens = rawTokens.filter(t => !STOP_WORDS.has(t));
+    const searchTokens = meaningfulTokens.length > 0 ? meaningfulTokens : (rawTokens.length > 0 ? rawTokens : []);
+
+    if (searchTokens.length > 0) {
+      const tokenConditions = [];
+      for (const token of searchTokens.slice(0, 6)) {
+        params.push('%' + token + '%');
+        const pIdx = params.length;
+        tokenConditions.push(`(LOWER(content) LIKE $${pIdx} OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(entities) e WHERE LOWER(e) LIKE $${pIdx}))`);
+      }
+      conditions.push(`(${tokenConditions.join(' OR ')})`);
+    }
   }
 
   const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
   params.push(Math.max(1, Math.min(100, limit)));
   const limitClause = `LIMIT $${params.length}`;
 
-  const rows = await query(
-    `SELECT * FROM memories ${whereClause} ORDER BY created_at DESC ${limitClause}`,
+  let rows = await query(
+    `SELECT * FROM memories ${whereClause} ORDER BY updated_at DESC ${limitClause}`,
     params
   );
+
+  // If specific search had 0 results, return top global factual memories as helpful fallback
+  if (rows.length === 0 && (type === 'all' || type === 'factual')) {
+    rows = await query(
+      `SELECT * FROM memories WHERE type = 'factual' ORDER BY updated_at DESC LIMIT 10`
+    );
+  }
+
   return rows;
 }
 
@@ -472,10 +535,9 @@ export async function searchMemories({ type = 'all', sessionId = null, queryText
  */
 export async function retrieveAgentContext(goal, sessionId = null) {
   try {
-    // 1. Fetch factual memories
+    // 1. Fetch factual memories (Global enduring knowledge across all sessions)
     const factuals = await query(
-      `SELECT content FROM memories WHERE type = 'factual' AND (session_id IS NULL OR session_id = $1) ORDER BY created_at ASC LIMIT 15`,
-      [sessionId]
+      `SELECT content FROM memories WHERE type = 'factual' ORDER BY updated_at DESC LIMIT 20`
     );
 
     // 2. Fetch past relevant episodes
@@ -484,7 +546,8 @@ export async function retrieveAgentContext(goal, sessionId = null) {
     );
 
     // 3. Extract keywords from goal and query graph relations
-    const keywords = (goal || '').split(/\s+/).filter(w => w.length > 3).slice(0, 6);
+    const rawTokens = (goal || '').toLowerCase().replace(/[^a-z0-9_\s-]/g, ' ').split(/\s+/);
+    const keywords = rawTokens.filter(w => w.length > 2 && !STOP_WORDS.has(w)).slice(0, 8);
     const relations = await queryGraphRelations(keywords);
 
     let context = '';
@@ -506,7 +569,7 @@ export async function retrieveAgentContext(goal, sessionId = null) {
 
     return context;
   } catch (err) {
-    console.warn('[Mem0] Failed to retrieve agent context:', err.message);
+    console.warn('[Mem0] Failed to retrieve multi-tier context:', err.message);
     return '';
   }
 }
