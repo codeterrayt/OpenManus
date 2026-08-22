@@ -95,33 +95,31 @@ export const ThinkingSelector: React.FC<ThinkingSelectorProps> = ({ className = 
         type="button"
         disabled={isStreaming}
         onClick={() => setIsOpen(!isOpen)}
-        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-medium transition-all duration-150 border cursor-pointer select-none ${
-          isOpen
-            ? 'bg-purple-500/20 border-purple-500/50 text-purple-200 ring-1 ring-purple-500/30'
-            : currentBudgetValue === 0 && activeTab === 'budget'
-            ? 'bg-white/[0.04] hover:bg-white/[0.07] border-white/[0.08] text-slate-400 hover:text-slate-300'
-            : 'bg-gradient-to-r from-purple-500/10 to-indigo-500/10 hover:from-purple-500/20 hover:to-indigo-500/20 border-purple-500/30 text-purple-300 shadow-sm'
+        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-medium transition-colors border cursor-pointer select-none ${
+          isOpen || currentBudgetValue > 0 || isEffortMode
+            ? 'bg-indigo-500/15 border-indigo-500/40 text-indigo-300'
+            : 'bg-white/[0.04] hover:bg-white/[0.07] border-white/[0.08] text-slate-300'
         }`}
         title="Configure model thinking and reasoning limits"
       >
-        <Brain className={`w-3.5 h-3.5 ${currentBudgetValue > 0 || isEffortMode ? 'text-purple-400 animate-pulse' : 'text-slate-500'}`} />
+        <Brain className={`w-3.5 h-3.5 ${currentBudgetValue > 0 || isEffortMode ? 'text-indigo-400' : 'text-slate-400'}`} />
         <span className="truncate">{activeLabel}</span>
         <ChevronDown className={`w-3 h-3 transition-transform duration-200 text-slate-400 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
       {/* Popover Menu Modal */}
       {isOpen && (
-        <div className="absolute bottom-full mb-2 left-0 w-80 md:w-96 rounded-2xl bg-[#0D101A] border border-white/[0.12] shadow-2xl z-50 p-3.5 space-y-3 animate-fade-in backdrop-blur-xl">
+        <div className="absolute bottom-full mb-2 left-0 w-80 md:w-96 rounded-2xl bg-[#0D101A] border border-white/[0.12] shadow-2xl z-50 p-4 space-y-3 animate-fade-in backdrop-blur-xl">
           {/* Header */}
           <div className="flex items-center justify-between border-b border-white/[0.06] pb-2.5">
             <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-purple-500/15 border border-purple-500/25 text-purple-400">
+              <div className="p-1.5 rounded-lg bg-indigo-600/15 border border-indigo-500/25 text-indigo-400">
                 <Brain className="w-4 h-4" />
               </div>
               <div>
                 <h4 className="text-xs font-bold text-white font-heading tracking-tight flex items-center gap-1.5">
                   {capabilities.title}
-                  <span className="text-[10px] font-mono font-semibold uppercase px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                  <span className="text-[10px] font-mono font-semibold uppercase px-1.5 py-0.5 rounded bg-white/[0.08] text-slate-300 border border-white/[0.1]">
                     {capabilities.providerType}
                   </span>
                 </h4>
@@ -137,9 +135,9 @@ export const ThinkingSelector: React.FC<ThinkingSelectorProps> = ({ className = 
             <button
               type="button"
               onClick={() => setActiveTab('budget')}
-              className={`flex-1 py-1 text-[11px] font-medium rounded-md transition-all cursor-pointer select-none ${
+              className={`flex-1 py-1 text-[11px] font-medium rounded-md transition-colors cursor-pointer select-none ${
                 activeTab === 'budget'
-                  ? 'bg-purple-600/30 text-purple-200 shadow-sm border border-purple-500/30'
+                  ? 'bg-indigo-600 text-white shadow-sm'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -148,9 +146,9 @@ export const ThinkingSelector: React.FC<ThinkingSelectorProps> = ({ className = 
             <button
               type="button"
               onClick={() => setActiveTab('effort')}
-              className={`flex-1 py-1 text-[11px] font-medium rounded-md transition-all cursor-pointer select-none ${
+              className={`flex-1 py-1 text-[11px] font-medium rounded-md transition-colors cursor-pointer select-none ${
                 activeTab === 'effort'
-                  ? 'bg-purple-600/30 text-purple-200 shadow-sm border border-purple-500/30'
+                  ? 'bg-indigo-600 text-white shadow-sm'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -165,7 +163,7 @@ export const ThinkingSelector: React.FC<ThinkingSelectorProps> = ({ className = 
                 <span className="text-[11px] font-semibold text-slate-300">
                   Thinking Budget Limit
                 </span>
-                <span className="text-[11px] font-mono text-purple-300 bg-purple-500/15 px-2 py-0.5 rounded border border-purple-500/25">
+                <span className="text-[11px] font-mono text-indigo-300 bg-indigo-500/15 px-2 py-0.5 rounded border border-indigo-500/25">
                   {currentBudgetValue === 0 ? 'Disabled (0 tokens)' : `${currentBudgetValue.toLocaleString()} tokens (~${Math.round(currentBudgetValue / 1024)}k)`}
                 </span>
               </div>
@@ -179,14 +177,16 @@ export const ThinkingSelector: React.FC<ThinkingSelectorProps> = ({ className = 
                       key={preset.id}
                       type="button"
                       onClick={() => handleSelectPreset(preset)}
-                      className={`flex flex-col items-center justify-center p-2 rounded-xl border text-center transition-all cursor-pointer select-none ${
+                      className={`flex flex-col items-center justify-center p-2 rounded-xl border text-center transition-colors cursor-pointer select-none ${
                         isSelected
-                          ? 'bg-purple-500/20 border-purple-500/60 text-white shadow-sm ring-1 ring-purple-500/40'
-                          : 'bg-[#141824]/80 hover:bg-[#1A2030] border-white/[0.06] text-slate-300 hover:text-white'
+                          ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm'
+                          : 'bg-[#141824] hover:bg-[#1A2030] border-white/[0.06] text-slate-300 hover:text-white'
                       }`}
                     >
                       <span className="text-xs font-bold font-mono">{preset.shortLabel}</span>
-                      <span className="text-[9px] text-slate-400 mt-0.5 leading-tight">{preset.id === 'off' ? 'Direct' : `${Number(preset.value) / 1024}k`}</span>
+                      <span className={`text-[9px] mt-0.5 leading-tight ${isSelected ? 'text-indigo-100' : 'text-slate-400'}`}>
+                        {preset.id === 'off' ? 'Direct' : `${Number(preset.value) / 1024}k`}
+                      </span>
                     </button>
                   );
                 })}
@@ -199,7 +199,7 @@ export const ThinkingSelector: React.FC<ThinkingSelectorProps> = ({ className = 
                     <Sliders className="w-3 h-3 text-slate-400" />
                     Custom Budget:
                   </span>
-                  <span className="font-mono text-purple-300 font-semibold">
+                  <span className="font-mono text-indigo-300 font-semibold">
                     {currentBudgetValue.toLocaleString()} tokens
                   </span>
                 </div>
@@ -210,7 +210,7 @@ export const ThinkingSelector: React.FC<ThinkingSelectorProps> = ({ className = 
                   step={capabilities.stepBudget || 1024}
                   value={currentBudgetValue}
                   onChange={handleSliderChange}
-                  className="w-full accent-purple-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                  className="w-full accent-indigo-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
                 />
                 <div className="flex justify-between text-[9px] font-mono text-slate-500">
                   <span>{((capabilities.minBudget || 1024) / 1024)}k</span>
@@ -239,17 +239,17 @@ export const ThinkingSelector: React.FC<ThinkingSelectorProps> = ({ className = 
                         setReasoningEffort(preset.value as 'low' | 'medium' | 'high');
                         setIsOpen(false);
                       }}
-                      className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition-all cursor-pointer select-none ${
+                      className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition-colors cursor-pointer select-none ${
                         isSelected
-                          ? 'bg-purple-500/20 border-purple-500/60 text-white shadow-sm ring-1 ring-purple-500/40'
-                          : 'bg-[#141824]/80 hover:bg-[#1A2030] border-white/[0.06] text-slate-300 hover:text-white'
+                          ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm'
+                          : 'bg-[#141824] hover:bg-[#1A2030] border-white/[0.06] text-slate-300 hover:text-white'
                       }`}
                     >
                       <div className="flex items-center justify-between w-full">
                         <span className="text-xs font-bold font-heading capitalize">{preset.label}</span>
-                        {isSelected && <Check className="w-3 h-3 text-purple-400" />}
+                        {isSelected && <Check className="w-3 h-3 text-white" />}
                       </div>
-                      <p className="text-[10px] text-slate-400 mt-1 leading-tight">
+                      <p className={`text-[10px] mt-1 leading-tight ${isSelected ? 'text-indigo-100' : 'text-slate-400'}`}>
                         {preset.description}
                       </p>
                     </button>
@@ -261,7 +261,7 @@ export const ThinkingSelector: React.FC<ThinkingSelectorProps> = ({ className = 
 
           {/* Footer Note */}
           <div className="pt-2 border-t border-white/[0.06] flex items-center gap-1.5 text-[10px] text-slate-500">
-            <Info className="w-3 h-3 text-purple-400 shrink-0" />
+            <Info className="w-3 h-3 text-slate-400 shrink-0" />
             <span>Higher limits provide deeper multi-step reasoning for difficult coding and design tasks.</span>
           </div>
         </div>

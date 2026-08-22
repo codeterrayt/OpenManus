@@ -107,7 +107,7 @@ export const ToolCallsGroup: React.FC<ToolCallsGroupProps> = ({ toolCalls }) => 
       case 'docker':
       case 'docker_build':
       case 'docker_compose':
-        return <Layers className="w-3.5 h-3.5 text-cyan-400" />;
+        return <Layers className="w-3.5 h-3.5 text-slate-400" />;
       case 'list_skills':
       case 'get_skill':
       case 'save_skill':

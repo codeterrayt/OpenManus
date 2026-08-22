@@ -158,7 +158,7 @@ export const ChatInput: React.FC = () => {
 
   return (
     <div 
-      className="p-4 bg-gradient-to-t from-[#090B10] via-[#090B10]/95 to-transparent relative w-full"
+      className="p-4 bg-[#090B10] border-t border-white/[0.06] relative w-full"
       onDragEnter={handleDrag}
       onDragOver={handleDrag}
       onDragLeave={handleDrag}
@@ -318,7 +318,7 @@ export const ChatInput: React.FC = () => {
 
               {/* Agent Selector */}
               <div className="flex items-center gap-1.5 bg-white/[0.04] hover:bg-white/[0.07] border border-white/[0.08] px-2.5 py-1 rounded-lg text-xs transition-colors">
-                <Sparkles className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                <Sparkles className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                 <select
                   value={selectedAgent}
                   onChange={(e) => setSelectedAgent(e.target.value)}
@@ -351,7 +351,7 @@ export const ChatInput: React.FC = () => {
                 className="flex items-center gap-1.5 bg-white/[0.04] hover:bg-white/[0.07] border border-white/[0.08] px-2.5 py-1 rounded-lg text-xs transition-colors"
                 title={`Context History: ${maxHistoryTurns === 0 ? 'Full History (All Turns)' : `Last ${maxHistoryTurns} Turns`}, Strategy: ${summaryStrategy}, Auto-Summarize: ${autoSummarize ? 'ON' : 'OFF'}`}
               >
-                <History className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                <History className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                 <select
                   value={maxHistoryTurns}
                   onChange={(e) => setMaxHistoryTurns(Number(e.target.value))}

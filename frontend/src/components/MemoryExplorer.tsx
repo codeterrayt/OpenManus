@@ -222,12 +222,12 @@ export const MemoryExplorer: React.FC<MemoryExplorerProps> = ({ selectedModel })
 
     const labelColors: Record<string, string> = {
       User: '#8b5cf6',
-      Preference: '#10b981',
-      Technology: '#06b6d4',
-      Service: '#f59e0b',
-      Task: '#ec4899',
-      Lesson: '#14b8a6',
-      Component: '#3b82f6',
+      Preference: '#6366f1',
+      Technology: '#818cf8',
+      Service: '#94a3b8',
+      Task: '#a5b4fc',
+      Lesson: '#64748b',
+      Component: '#475569',
       Entity: '#6366f1',
     };
 
@@ -322,11 +322,11 @@ export const MemoryExplorer: React.FC<MemoryExplorerProps> = ({ selectedModel })
   const getTypeBadge = (type?: string) => {
     switch (type) {
       case 'episodic':
-        return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Episodic</span>;
+        return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-white/[0.06] text-slate-300 border border-white/[0.1]">Episodic</span>;
       case 'context':
-        return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">Context</span>;
+        return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-white/[0.06] text-slate-300 border border-white/[0.1]">Context</span>;
       case 'long_term':
-        return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">Long-term</span>;
+        return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-white/[0.06] text-slate-300 border border-white/[0.1]">Long-term</span>;
       case 'factual':
       default:
         return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">Factual</span>;
@@ -336,7 +336,7 @@ export const MemoryExplorer: React.FC<MemoryExplorerProps> = ({ selectedModel })
   return (
     <div className="space-y-4 text-slate-200">
       {/* Top Banner / Engine Status */}
-      <div className="flex items-center justify-between p-3 rounded-2xl bg-gradient-to-r from-indigo-950/40 via-purple-950/20 to-slate-900/40 border border-indigo-500/20 text-xs">
+      <div className="flex items-center justify-between p-3.5 rounded-2xl bg-[#111420] border border-white/[0.08] text-xs">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
             <Brain className="w-4 h-4" />
@@ -344,7 +344,7 @@ export const MemoryExplorer: React.FC<MemoryExplorerProps> = ({ selectedModel })
           <div>
             <div className="font-semibold text-slate-100 flex items-center gap-2">
               <span>Mem0 Multi-Tier Engine</span>
-              <span className="px-1.5 py-0.2 rounded text-[10px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Active</span>
+              <span className="px-1.5 py-0.2 rounded text-[10px] font-mono bg-white/[0.06] text-slate-300 border border-white/[0.1]">Active</span>
             </div>
             <p className="text-[11px] text-slate-400">
               Factual, Episodic, Context, & Graph Memory

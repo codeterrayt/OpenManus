@@ -491,7 +491,7 @@ export const Sidebar: React.FC = () => {
                     <div className="pt-6 border-t border-white/[0.06] flex items-center justify-between">
                       <div className="max-w-lg">
                         <div className="text-sm font-semibold text-white flex items-center gap-2">
-                          <Zap className="w-4 h-4 text-amber-400" />
+                          <Zap className="w-4 h-4 text-slate-400" />
                           <span>Automatic Context Summarization</span>
                         </div>
                         <p className="text-xs text-slate-400 mt-1">
@@ -519,14 +519,14 @@ export const Sidebar: React.FC = () => {
                       <div className="flex items-center justify-between">
                         <div>
                           <div className="text-sm font-semibold text-white flex items-center gap-2">
-                            <History className="w-4 h-4 text-cyan-400" />
+                            <History className="w-4 h-4 text-slate-400" />
                             <span>Past Turns Depth (Working Context Window)</span>
                           </div>
                           <p className="text-xs text-slate-400 mt-1">
                             Number of previous user/assistant interaction turns from the current session fed to the model context.
                           </p>
                         </div>
-                        <span className="text-xs font-mono font-bold text-cyan-400 px-3 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/20">
+                        <span className="text-xs font-mono font-semibold text-slate-300 px-3 py-1 rounded-lg bg-white/[0.06] border border-white/[0.08]">
                           {maxHistoryTurns === 0 ? 'All Turns (Unlimited)' : `${maxHistoryTurns} Turns`}
                         </span>
                       </div>
@@ -544,9 +544,9 @@ export const Sidebar: React.FC = () => {
                             key={opt.val}
                             type="button"
                             onClick={() => setMaxHistoryTurns(opt.val)}
-                            className={`px-3.5 py-2 text-xs font-semibold rounded-xl border transition-all ${
+                            className={`px-3.5 py-2 text-xs font-semibold rounded-xl border transition-colors ${
                               maxHistoryTurns === opt.val
-                                ? 'bg-cyan-600/20 border-cyan-500/50 text-cyan-200 shadow-sm'
+                                ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm'
                                 : 'bg-[#111420] border-white/[0.06] text-slate-400 hover:text-slate-200 hover:border-white/[0.12]'
                             }`}
                           >
@@ -561,14 +561,14 @@ export const Sidebar: React.FC = () => {
                       <div className="flex items-center justify-between">
                         <div>
                           <div className="text-sm font-semibold text-white flex items-center gap-2">
-                            <Scissors className="w-4 h-4 text-emerald-400" />
+                            <Scissors className="w-4 h-4 text-slate-400" />
                             <span>Preserve Recent Turns Verbatim</span>
                           </div>
                           <p className="text-xs text-slate-400 mt-1">
                             Guaranteed number of latest interaction turns that are NEVER compressed or summarized.
                           </p>
                         </div>
-                        <span className="text-xs font-mono font-bold text-emerald-400 px-3 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                        <span className="text-xs font-mono font-semibold text-slate-300 px-3 py-1 rounded-lg bg-white/[0.06] border border-white/[0.08]">
                           {keepRecentTurns} Turns
                         </span>
                       </div>
@@ -579,7 +579,7 @@ export const Sidebar: React.FC = () => {
                         step={1}
                         value={keepRecentTurns}
                         onChange={(e) => setKeepRecentTurns(Number(e.target.value))}
-                        className="w-full accent-emerald-500 cursor-pointer h-2 bg-slate-800 rounded-lg"
+                        className="w-full accent-indigo-500 cursor-pointer h-2 bg-slate-800 rounded-lg"
                       />
                     </div>
 

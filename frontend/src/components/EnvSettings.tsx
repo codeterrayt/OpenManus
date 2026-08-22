@@ -248,7 +248,7 @@ const CustomProviderCard: React.FC<{
     }`}>
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-border-dark/30 bg-[#0F172A]/50">
-        <Globe className="w-4 h-4 text-purple-400" />
+        <Globe className="w-4 h-4 text-indigo-400" />
         <span className="text-sm font-bold text-text-main flex-1 truncate">
           {provider.name || 'Custom Provider'}
         </span>
@@ -540,7 +540,7 @@ export const EnvSettings: React.FC = () => {
         <div className="flex items-center justify-between">
           <div>
             <h5 className="text-xs font-bold text-text-main uppercase tracking-wider flex items-center gap-1.5">
-              <Globe className="w-4 h-4 text-purple-400" />
+              <Globe className="w-4 h-4 text-indigo-400" />
               Custom AI Providers & Endpoints
             </h5>
             <p className="text-[11px] text-text-muted">
@@ -550,7 +550,7 @@ export const EnvSettings: React.FC = () => {
           <button
             type="button"
             onClick={handleAddCustomProvider}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/40 text-purple-300 text-xs font-bold rounded-lg transition-all active:scale-95"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 text-xs font-bold rounded-lg transition-all active:scale-95"
           >
             <Plus className="w-3.5 h-3.5" />
             Add Custom Provider

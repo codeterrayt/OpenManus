@@ -124,7 +124,7 @@ export const StreamingMessage: React.FC = () => {
       case 'docker':
       case 'docker_build':
       case 'docker_compose':
-        return <Layers className="w-4 h-4 text-cyan-400" />;
+        return <Layers className="w-4 h-4 text-slate-400" />;
       case 'save_skill':
       case 'get_skill':
       case 'list_skills':
@@ -307,9 +307,9 @@ export const StreamingMessage: React.FC = () => {
                   <span className={`flex items-center gap-1 px-2 py-0.5 rounded-md border ${
                     costInfo.isFree
                       ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
-                      : 'bg-purple-500/10 text-purple-300 border-purple-500/20'
+                      : 'bg-white/[0.05] text-slate-300 border-white/[0.08]'
                   }`}>
-                    <Coins className="w-3 h-3" />
+                    <Coins className="w-3 h-3 text-slate-400" />
                     <span>{costInfo.formattedCost}</span>
                   </span>
 

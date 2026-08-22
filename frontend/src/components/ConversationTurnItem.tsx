@@ -287,7 +287,7 @@ export const ConversationTurnItem: React.FC<ConversationTurnItemProps> = ({
           className="flex justify-end group/usermsg"
         >
           <div className="flex max-w-2xl gap-3 flex-row-reverse text-right">
-            <div className="shrink-0 w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-500 to-indigo-600 text-white flex items-center justify-center shadow-sm mt-0.5">
+            <div className="shrink-0 w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-sm mt-0.5">
               <User className="w-4 h-4" />
             </div>
 
@@ -393,9 +393,9 @@ export const ConversationTurnItem: React.FC<ConversationTurnItemProps> = ({
                   <span className={`flex items-center gap-1 px-2 py-0.5 rounded-md border ${
                     turn.isFree 
                       ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20' 
-                      : 'bg-purple-500/10 text-purple-300 border-purple-500/20'
+                      : 'bg-white/[0.05] text-slate-300 border-white/[0.08]'
                   }`}>
-                    <Coins className="w-3 h-3" />
+                    <Coins className="w-3 h-3 text-slate-400" />
                     <span>{turn.formattedCost}</span>
                   </span>
 

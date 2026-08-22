@@ -54,7 +54,7 @@ export const ExecutionTimeline: React.FC<ExecutionTimelineProps> = ({ logs }) =>
     <div className="relative pl-4 border-l border-border-dark/80 ml-3 py-2 space-y-6 text-left select-none">
       {/* Starting point */}
       <div className="relative">
-        <span className="absolute -left-[25px] top-0 w-4.5 h-4.5 rounded-full bg-gradient-to-tr from-primary to-secondary flex items-center justify-center text-white ring-4 ring-background">
+        <span className="absolute -left-[25px] top-0 w-4.5 h-4.5 rounded-full bg-indigo-600 flex items-center justify-center text-white ring-4 ring-background">
           <Play className="w-2.5 h-2.5 translate-x-[0.5px]" />
         </span>
         <div className="pl-2">

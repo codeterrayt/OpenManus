@@ -177,7 +177,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
         {/* Avatar */}
         <div className={`shrink-0 w-8 h-8 rounded-xl flex items-center justify-center mt-0.5 ${
           isUser 
-            ? 'bg-gradient-to-tr from-indigo-500 to-indigo-600 text-white shadow-sm' 
+            ? 'bg-indigo-600 text-white shadow-sm' 
             : 'bg-[#151926] border border-white/[0.08] text-indigo-400 shadow-sm'
         }`}>
           {isUser ? (

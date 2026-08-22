@@ -202,11 +202,11 @@ function App() {
                   className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-medium border ${
                     cost.isFree
                       ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
-                      : 'bg-purple-500/10 text-purple-200 border-purple-500/20'
+                      : 'bg-white/[0.05] text-slate-300 border-white/[0.08]'
                   }`}
                   title={`Prompt tokens: ~${pTokens}, Completion tokens: ~${cTokens}`}
                 >
-                  <Coins className="w-3.5 h-3.5 text-purple-400" />
+                  <Coins className="w-3.5 h-3.5 text-slate-400" />
                   <span>{cost.formattedCost}</span>
                   <span className="text-white/[0.2]">•</span>
                   <span className="text-slate-400">{formatTokenCount(pTokens + cTokens)} tok</span>
