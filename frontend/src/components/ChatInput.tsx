@@ -222,9 +222,9 @@ export const ChatInput: React.FC = () => {
         {/* Main Floating Input Capsule */}
         <form 
           onSubmit={handleSubmit}
-          className="rounded-2xl border border-white/[0.1] bg-[#111520]/95 backdrop-blur-xl shadow-floating focus-within:border-indigo-500/50 transition-all duration-200 overflow-hidden"
+          className="rounded-2xl border border-white/[0.1] bg-[#111520]/95 backdrop-blur-xl shadow-floating focus-within:border-indigo-500/50 transition-all duration-200 relative"
         >
-          <div className="p-3">
+          <div className="p-3 rounded-t-2xl">
             <textarea
               ref={textareaRef}
               rows={1}
@@ -238,7 +238,7 @@ export const ChatInput: React.FC = () => {
           </div>
 
           {/* Controls Footer Strip */}
-          <div className="flex items-center justify-between border-t border-white/[0.06] py-2 px-3 bg-[#0D1019]/60">
+          <div className="flex items-center justify-between border-t border-white/[0.06] py-2 px-3 bg-[#0D1019]/60 rounded-b-2xl relative">
             {/* Left Options */}
             <div className="flex items-center gap-2 flex-wrap">
               {/* File Attachment button */}
