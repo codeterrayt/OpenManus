@@ -909,8 +909,17 @@ async function summarizeHistory(llmClient, model, messages, onEvent, isGroq = fa
   const KEEP_RECENT = isGroq ? 2 : 6;
   if (messages.length <= KEEP_RECENT + 2) return null; // nothing to summarize
 
-  let toSummarize = messages.slice(0, messages.length - KEEP_RECENT);
-  const recent      = messages.slice(messages.length - KEEP_RECENT);
+  // Find a safe split point that does NOT split an assistant tool_calls <-> tool response block:
+  let splitIndex = Math.max(1, messages.length - KEEP_RECENT);
+  while (splitIndex > 1 && messages[splitIndex]?.role === 'tool') {
+    splitIndex--;
+  }
+
+  let toSummarize = messages.slice(0, splitIndex);
+  let recent = messages.slice(splitIndex);
+
+  // Ensure recent starts cleanly without orphan tool calls
+  recent = sanitizeHistory(recent);
 
   // If on Groq with low TPM, ensure the history to summarize doesn't exceed the TPM limit itself
   if (isGroq) {
@@ -964,39 +973,56 @@ async function summarizeHistory(llmClient, model, messages, onEvent, isGroq = fa
   return { summarized: [summaryMsg, ...recent], summary };
 }
 
-
+/**
+ * Ensures strict compliance with OpenAI & Anthropic chat completion history requirements:
+ * 1. An assistant message with `tool_calls` MUST be followed IMMEDIATELY by matching `role: 'tool'` messages
+ *    for every `id` in `tool_calls`.
+ * 2. A `role: 'tool'` message MUST NEVER appear unless it immediately follows an assistant message that requested its `tool_call_id`.
+ * 3. No orphan `tool` messages (which cause "400 No tool call found for function call output").
+ * 4. No un-responded `tool_calls` before a subsequent `user` or `assistant` message.
+ */
 function sanitizeHistory(history) {
+  if (!Array.isArray(history) || history.length === 0) return [];
+
   const sanitized = [];
   let pendingToolCallIds = new Set();
 
   for (const msg of history) {
-    if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
+    if (!msg || typeof msg !== 'object') continue;
+
+    if (msg.role === 'assistant' && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+      // If there were pending tool calls from a previous assistant message that were never answered, fill them
       if (pendingToolCallIds.size > 0) {
-        for (const id of pendingToolCallIds) {
+        for (const missingId of pendingToolCallIds) {
           sanitized.push({
             role: 'tool',
-            tool_call_id: id,
-            content: 'Error: Session interrupted before tool response could be recorded.'
+            tool_call_id: missingId,
+            content: '{"status":"interrupted","message":"Session was interrupted before tool response could be recorded."}'
           });
         }
         pendingToolCallIds.clear();
       }
-      for (const tc of msg.tool_calls) {
-        if (tc.id) pendingToolCallIds.add(tc.id);
-      }
+
+      pendingToolCallIds = new Set(msg.tool_calls.map(tc => tc.id).filter(Boolean));
       sanitized.push(msg);
     } else if (msg.role === 'tool') {
-      if (msg.tool_call_id) {
+      // ONLY keep this tool response if it matches an expected tool call from the immediately preceding assistant message
+      if (msg.tool_call_id && pendingToolCallIds.has(msg.tool_call_id)) {
         pendingToolCallIds.delete(msg.tool_call_id);
+        sanitized.push(msg);
+      } else {
+        // Orphan tool message! Pruning it prevents: "400 No tool call found for function call output"
+        console.warn(`[Agent] Pruned orphan tool message with call_id: ${msg.tool_call_id}`);
       }
-      sanitized.push(msg);
     } else {
+      // User or System message:
+      // If previous assistant message had tool calls that were never answered, fill placeholders before adding user/system message
       if (pendingToolCallIds.size > 0) {
-        for (const id of pendingToolCallIds) {
+        for (const missingId of pendingToolCallIds) {
           sanitized.push({
             role: 'tool',
-            tool_call_id: id,
-            content: 'Error: Session interrupted before tool response could be recorded.'
+            tool_call_id: missingId,
+            content: '{"status":"interrupted","message":"Session was interrupted before tool response could be recorded."}'
           });
         }
         pendingToolCallIds.clear();
@@ -1005,14 +1031,16 @@ function sanitizeHistory(history) {
     }
   }
 
+  // If history ended with pending tool calls, fill placeholders
   if (pendingToolCallIds.size > 0) {
-    for (const id of pendingToolCallIds) {
+    for (const missingId of pendingToolCallIds) {
       sanitized.push({
         role: 'tool',
-        tool_call_id: id,
-        content: 'Error: Session interrupted before tool response could be recorded.'
+        tool_call_id: missingId,
+        content: '{"status":"interrupted","message":"Session was interrupted before tool response could be recorded."}'
       });
     }
+    pendingToolCallIds.clear();
   }
 
   return sanitized;
@@ -1465,9 +1493,10 @@ Before you call any browse_web action (except 'extract_text' or 'screenshot'), y
     const isOpenAIReasoning = lowerModel.startsWith('o1') || lowerModel.startsWith('o3') || lowerModel.startsWith('o4') || lowerModel.includes('/o1') || lowerModel.includes('/o3') || lowerModel.includes('/o4') || lowerModel.includes('gpt-5');
     const isDeepSeekReasoning = lowerModel.includes('r1') || lowerModel.includes('deepseek-reasoner') || lowerModel.includes('qwq');
 
+    const sanitizedMessages = sanitizeHistory(messages);
     const completionParams = {
       model:       targetModelName,
-      messages,
+      messages:    sanitizedMessages,
       tools:       getToolDefinitions(isGroq),
       tool_choice: 'auto',
       stream:      true,   // ← live token streaming
