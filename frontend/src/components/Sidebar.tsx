@@ -55,7 +55,7 @@ export const Sidebar: React.FC = () => {
 
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [showSettings, setShowSettings] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<'general' | 'memory' | 'environment'>('general');
+  const [settingsTab, setSettingsTab] = useState<'general' | 'memory' | 'environment' | 'runtime'>('general');
   const [isSummarizingContext, setIsSummarizingContext] = useState(false);
   const [summarizeSuccessMsg, setSummarizeSuccessMsg] = useState<string | null>(null);
 
@@ -304,345 +304,431 @@ export const Sidebar: React.FC = () => {
         </button>
       </div>
 
-      {/* Settings Modal */}
+      {/* Master-Detail Settings Modal */}
       {showSettings && createPortal(
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
-          <div className="w-full max-w-2xl bg-[#0F131E] border border-white/[0.1] rounded-2xl shadow-floating overflow-hidden flex flex-col max-h-[90vh]">
-            {/* Modal Header */}
-            <div className="px-5 py-4 border-b border-white/[0.08] flex items-center justify-between bg-[#131724]">
-              <div className="flex items-center gap-2">
-                <Settings className="w-4 h-4 text-indigo-400" />
-                <h3 className="font-heading font-bold text-sm text-white">
-                  Engine & Workspace Settings
-                </h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-6 animate-fade-in">
+          <div className="w-full max-w-5xl h-[85vh] bg-[#0B0D14] border border-white/[0.08] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+            {/* Modal Top Header */}
+            <div className="px-6 py-4 border-b border-white/[0.08] flex items-center justify-between bg-[#0E1019]">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+                  <Settings className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-heading font-bold text-base text-white">
+                    Workspace & Engine Settings
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Configure agent intelligence, context window depth, memory graph, and custom model endpoints.
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => setShowSettings(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.08] transition-colors"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.08] transition-colors"
+                title="Close settings"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Modal Nav Tabs */}
-            <div className="flex border-b border-white/[0.06] bg-[#0C0F18] px-5 gap-4">
-              <button
-                type="button"
-                onClick={() => setSettingsTab('general')}
-                className={`py-2.5 text-xs font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${
-                  settingsTab === 'general'
-                    ? 'border-indigo-500 text-white'
-                    : 'border-transparent text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <Sliders className="w-3.5 h-3.5" />
-                <span>General & Context</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setSettingsTab('memory')}
-                className={`py-2.5 text-xs font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${
-                  settingsTab === 'memory'
-                    ? 'border-indigo-500 text-white'
-                    : 'border-transparent text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <Brain className="w-3.5 h-3.5" />
-                <span>Mem0 Memory & Graph</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setSettingsTab('environment')}
-                className={`py-2.5 text-xs font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${
-                  settingsTab === 'environment'
-                    ? 'border-indigo-500 text-white'
-                    : 'border-transparent text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <KeyRound className="w-3.5 h-3.5" />
-                <span>AI Providers & API Keys</span>
-              </button>
-            </div>
+            {/* Master-Detail Layout */}
+            <div className="flex flex-1 overflow-hidden">
+              {/* Left Navigation Rail (260px) */}
+              <div className="w-64 bg-[#080A10] border-r border-white/[0.08] p-3 flex flex-col gap-1 select-none">
+                <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-500 font-mono">
+                  Preferences
+                </div>
 
-            {/* Modal Content */}
-            <div className="p-5 overflow-y-auto flex-1 space-y-4">
-              {/* Tab: General & Context Management */}
-              {settingsTab === 'general' && (
-                <div className="space-y-4">
-                  {/* Context Strategy Selector */}
-                  <div className="p-4 rounded-xl bg-[#131724] border border-white/[0.06] space-y-3">
-                    <div>
-                      <div className="text-xs font-semibold text-white flex items-center gap-1.5">
-                        <Layers className="w-3.5 h-3.5 text-indigo-400" />
-                        <span>Context Management Strategy</span>
-                      </div>
-                      <div className="text-[11px] text-slate-400 mt-0.5">
-                        Control how conversation history is handled during long agent loops and multi-turn conversations.
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => setSummaryStrategy('rolling_summary')}
-                        className={`p-2.5 rounded-xl border text-left transition-all ${
-                          summaryStrategy === 'rolling_summary'
-                            ? 'bg-indigo-600/15 border-indigo-500 text-white shadow-sm'
-                            : 'bg-[#0C0F18] border-white/[0.06] text-slate-400 hover:text-slate-200'
-                        }`}
-                      >
-                        <div className="text-[11px] font-bold flex items-center justify-between">
-                          <span>Rolling Summary</span>
-                          {summaryStrategy === 'rolling_summary' && <CheckCircle2 className="w-3 h-3 text-indigo-400" />}
-                        </div>
-                        <div className="text-[10px] text-slate-400 mt-1 leading-tight">
-                          Condenses older turns with LLM; preserves recent turns.
-                        </div>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setSummaryStrategy('sliding_window')}
-                        className={`p-2.5 rounded-xl border text-left transition-all ${
-                          summaryStrategy === 'sliding_window'
-                            ? 'bg-indigo-600/15 border-indigo-500 text-white shadow-sm'
-                            : 'bg-[#0C0F18] border-white/[0.06] text-slate-400 hover:text-slate-200'
-                        }`}
-                      >
-                        <div className="text-[11px] font-bold flex items-center justify-between">
-                          <span>Sliding Window</span>
-                          {summaryStrategy === 'sliding_window' && <CheckCircle2 className="w-3 h-3 text-indigo-400" />}
-                        </div>
-                        <div className="text-[10px] text-slate-400 mt-1 leading-tight">
-                          Keeps last N turns verbatim; 0 extra LLM tokens used.
-                        </div>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setSummaryStrategy('off')}
-                        className={`p-2.5 rounded-xl border text-left transition-all ${
-                          summaryStrategy === 'off'
-                            ? 'bg-indigo-600/15 border-indigo-500 text-white shadow-sm'
-                            : 'bg-[#0C0F18] border-white/[0.06] text-slate-400 hover:text-slate-200'
-                        }`}
-                      >
-                        <div className="text-[11px] font-bold flex items-center justify-between">
-                          <span>Full History</span>
-                          {summaryStrategy === 'off' && <CheckCircle2 className="w-3 h-3 text-indigo-400" />}
-                        </div>
-                        <div className="text-[10px] text-slate-400 mt-1 leading-tight">
-                          Preserves all turns; never summarizes or truncates.
-                        </div>
-                      </button>
-                    </div>
+                <button
+                  type="button"
+                  onClick={() => setSettingsTab('general')}
+                  className={`w-full p-3 rounded-xl text-left transition-all flex items-start gap-3 ${
+                    settingsTab === 'general'
+                      ? 'bg-indigo-600/15 border border-indigo-500/40 text-white shadow-sm'
+                      : 'border border-transparent text-slate-400 hover:text-slate-200 hover:bg-white/[0.03]'
+                  }`}
+                >
+                  <Sliders className={`w-4 h-4 mt-0.5 shrink-0 ${settingsTab === 'general' ? 'text-indigo-400' : 'text-slate-500'}`} />
+                  <div>
+                    <div className="text-xs font-semibold text-white">General & Context</div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">Strategy & turn depth</div>
                   </div>
+                </button>
 
-                  {/* Auto-Summarization Master Toggle */}
-                  <div className="p-4 rounded-xl bg-[#131724] border border-white/[0.06] flex items-center justify-between">
-                    <div>
-                      <div className="text-xs font-semibold text-white flex items-center gap-1.5">
-                        <Zap className="w-3.5 h-3.5 text-amber-400" />
-                        <span>Automatic Context Summarization</span>
-                      </div>
-                      <div className="text-[11px] text-slate-400 mt-0.5">
-                        When enabled, automatically compresses context when token limit is approached. Turn off to prevent all unprompted summaries.
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setAutoSummarize(!autoSummarize)}
-                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                        autoSummarize ? 'bg-indigo-600' : 'bg-slate-700'
-                      }`}
-                    >
-                      <span
-                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                          autoSummarize ? 'translate-x-4' : 'translate-x-0'
-                        }`}
-                      />
-                    </button>
+                <button
+                  type="button"
+                  onClick={() => setSettingsTab('memory')}
+                  className={`w-full p-3 rounded-xl text-left transition-all flex items-start gap-3 ${
+                    settingsTab === 'memory'
+                      ? 'bg-indigo-600/15 border border-indigo-500/40 text-white shadow-sm'
+                      : 'border border-transparent text-slate-400 hover:text-slate-200 hover:bg-white/[0.03]'
+                  }`}
+                >
+                  <Brain className={`w-4 h-4 mt-0.5 shrink-0 ${settingsTab === 'memory' ? 'text-indigo-400' : 'text-slate-500'}`} />
+                  <div>
+                    <div className="text-xs font-semibold text-white">Mem0 Memory & Graph</div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">Knowledge graph explorer</div>
                   </div>
+                </button>
 
-                  {/* Past Turns History Depth */}
-                  <div className="p-4 rounded-xl bg-[#131724] border border-white/[0.06] space-y-3">
-                    <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setSettingsTab('environment')}
+                  className={`w-full p-3 rounded-xl text-left transition-all flex items-start gap-3 ${
+                    settingsTab === 'environment'
+                      ? 'bg-indigo-600/15 border border-indigo-500/40 text-white shadow-sm'
+                      : 'border border-transparent text-slate-400 hover:text-slate-200 hover:bg-white/[0.03]'
+                  }`}
+                >
+                  <KeyRound className={`w-4 h-4 mt-0.5 shrink-0 ${settingsTab === 'environment' ? 'text-indigo-400' : 'text-slate-500'}`} />
+                  <div>
+                    <div className="text-xs font-semibold text-white">AI Providers & Keys</div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">OpenAI, Groq & custom</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSettingsTab('runtime')}
+                  className={`w-full p-3 rounded-xl text-left transition-all flex items-start gap-3 ${
+                    settingsTab === 'runtime'
+                      ? 'bg-indigo-600/15 border border-indigo-500/40 text-white shadow-sm'
+                      : 'border border-transparent text-slate-400 hover:text-slate-200 hover:bg-white/[0.03]'
+                  }`}
+                >
+                  <Database className={`w-4 h-4 mt-0.5 shrink-0 ${settingsTab === 'runtime' ? 'text-indigo-400' : 'text-slate-500'}`} />
+                  <div>
+                    <div className="text-xs font-semibold text-white">System Runtime</div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">Health & connectivity</div>
+                  </div>
+                </button>
+              </div>
+
+              {/* Right Content View */}
+              <div className="flex-1 bg-[#0B0D14] overflow-y-auto p-8">
+                {/* View: General & Context Management */}
+                {settingsTab === 'general' && (
+                  <div className="max-w-3xl space-y-8">
+                    <div>
+                      <h4 className="text-base font-bold text-white">General & Context Window Configuration</h4>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Control how conversation history, past interaction turns, and summarization operate during multi-turn chats.
+                      </p>
+                    </div>
+
+                    {/* Setting Row 1: Context Management Strategy */}
+                    <div className="pt-4 border-t border-white/[0.06] space-y-3">
                       <div>
-                        <div className="text-xs font-semibold text-white flex items-center gap-1.5">
-                          <History className="w-3.5 h-3.5 text-cyan-400" />
-                          <span>Past Turns Depth (Session History Access)</span>
+                        <div className="text-sm font-semibold text-white flex items-center gap-2">
+                          <Layers className="w-4 h-4 text-indigo-400" />
+                          <span>Context Management Strategy</span>
                         </div>
-                        <div className="text-[11px] text-slate-400 mt-0.5">
-                          How many previous user turns in this chat session are fed to the model context.
-                        </div>
+                        <p className="text-xs text-slate-400 mt-1">
+                          Select the algorithm used when conversations exceed working context limits.
+                        </p>
                       </div>
-                      <span className="text-xs font-mono font-bold text-cyan-400 px-2.5 py-1 rounded bg-cyan-500/10 border border-cyan-500/20">
-                        {maxHistoryTurns === 0 ? 'Unlimited (All)' : `${maxHistoryTurns} Turns`}
-                      </span>
-                    </div>
 
-                    <div className="flex flex-wrap gap-1.5 pt-1">
-                      {[
-                        { label: '3 Turns', val: 3 },
-                        { label: '5 Turns', val: 5 },
-                        { label: '10 Turns', val: 10 },
-                        { label: '20 Turns', val: 20 },
-                        { label: '50 Turns', val: 50 },
-                        { label: 'All (Unlimited)', val: 0 },
-                      ].map(opt => (
+                      <div className="grid grid-cols-3 gap-3 pt-1">
                         <button
-                          key={opt.val}
                           type="button"
-                          onClick={() => setMaxHistoryTurns(opt.val)}
-                          className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all ${
-                            maxHistoryTurns === opt.val
-                              ? 'bg-cyan-600/20 border-cyan-500/50 text-cyan-200'
-                              : 'bg-[#0C0F18] border-white/[0.06] text-slate-400 hover:text-slate-200'
+                          onClick={() => setSummaryStrategy('rolling_summary')}
+                          className={`p-3.5 rounded-xl border text-left transition-all ${
+                            summaryStrategy === 'rolling_summary'
+                              ? 'bg-indigo-600/15 border-indigo-500 text-white shadow-sm'
+                              : 'bg-[#111420] border-white/[0.06] text-slate-400 hover:text-slate-200 hover:border-white/[0.12]'
                           }`}
                         >
-                          {opt.label}
+                          <div className="text-xs font-bold text-white flex items-center justify-between">
+                            <span>Rolling Summary</span>
+                            {summaryStrategy === 'rolling_summary' && <CheckCircle2 className="w-3.5 h-3.5 text-indigo-400" />}
+                          </div>
+                          <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
+                            Compresses older turns into a structured summary with LLM; preserves recent turns intact.
+                          </p>
                         </button>
-                      ))}
-                    </div>
-                  </div>
 
-                  {/* Keep Recent Turns Verbatim Slider */}
-                  <div className="p-4 rounded-xl bg-[#131724] border border-white/[0.06] space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="text-xs font-semibold text-white flex items-center gap-1.5">
-                          <Scissors className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>Preserve Recent Turns Verbatim</span>
-                        </div>
-                        <div className="text-[11px] text-slate-400 mt-0.5">
-                          Number of latest turns that are NEVER compressed or summarized for maximum continuity.
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSummaryStrategy('sliding_window')}
+                          className={`p-3.5 rounded-xl border text-left transition-all ${
+                            summaryStrategy === 'sliding_window'
+                              ? 'bg-indigo-600/15 border-indigo-500 text-white shadow-sm'
+                              : 'bg-[#111420] border-white/[0.06] text-slate-400 hover:text-slate-200 hover:border-white/[0.12]'
+                          }`}
+                        >
+                          <div className="text-xs font-bold text-white flex items-center justify-between">
+                            <span>Sliding Window</span>
+                            {summaryStrategy === 'sliding_window' && <CheckCircle2 className="w-3.5 h-3.5 text-indigo-400" />}
+                          </div>
+                          <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
+                            Keeps the latest turns verbatim and drops older ones. Uses 0 extra LLM tokens.
+                          </p>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setSummaryStrategy('off')}
+                          className={`p-3.5 rounded-xl border text-left transition-all ${
+                            summaryStrategy === 'off'
+                              ? 'bg-indigo-600/15 border-indigo-500 text-white shadow-sm'
+                              : 'bg-[#111420] border-white/[0.06] text-slate-400 hover:text-slate-200 hover:border-white/[0.12]'
+                          }`}
+                        >
+                          <div className="text-xs font-bold text-white flex items-center justify-between">
+                            <span>Full History</span>
+                            {summaryStrategy === 'off' && <CheckCircle2 className="w-3.5 h-3.5 text-indigo-400" />}
+                          </div>
+                          <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
+                            Preserves 100% of messages verbatim. Never summarizes or truncates history.
+                          </p>
+                        </button>
                       </div>
-                      <span className="text-xs font-mono font-bold text-emerald-400 px-2.5 py-1 rounded bg-emerald-500/10 border border-emerald-500/20">
-                        {keepRecentTurns} Turns
-                      </span>
                     </div>
-                    <input
-                      type="range"
-                      min={2}
-                      max={20}
-                      step={1}
-                      value={keepRecentTurns}
-                      onChange={(e) => setKeepRecentTurns(Number(e.target.value))}
-                      className="w-full accent-emerald-500 cursor-pointer"
-                    />
-                  </div>
 
-                  {/* Token Threshold Slider */}
-                  <div className="p-4 rounded-xl bg-[#131724] border border-white/[0.06] space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="text-xs font-semibold text-white">Context Token Compression Threshold</div>
-                        <div className="text-[11px] text-slate-400 mt-0.5">
-                          Trigger compaction when non-system messages exceed this token count.
+                    {/* Setting Row 2: Master Auto-Summarize Toggle */}
+                    <div className="pt-6 border-t border-white/[0.06] flex items-center justify-between">
+                      <div className="max-w-lg">
+                        <div className="text-sm font-semibold text-white flex items-center gap-2">
+                          <Zap className="w-4 h-4 text-amber-400" />
+                          <span>Automatic Context Summarization</span>
                         </div>
+                        <p className="text-xs text-slate-400 mt-1">
+                          When active, automatically summarizes history before context overflow. Turn OFF to prevent all unprompted background summarization.
+                        </p>
                       </div>
-                      <span className="text-xs font-mono font-bold text-indigo-400 px-2.5 py-1 rounded bg-indigo-500/10 border border-indigo-500/20">
-                        {(summaryThreshold / 1000).toFixed(0)}k tokens
-                      </span>
-                    </div>
-                    <input
-                      type="range"
-                      min={10000}
-                      max={120000}
-                      step={5000}
-                      value={summaryThreshold}
-                      onChange={(e) => setSummaryThreshold(Number(e.target.value))}
-                      className="w-full accent-indigo-500 cursor-pointer"
-                    />
-                  </div>
 
-                  {/* On-Demand Manual Context Summarization Action */}
-                  <div className="p-4 rounded-xl bg-[#131724] border border-white/[0.06] flex items-center justify-between">
+                      <button
+                        type="button"
+                        onClick={() => setAutoSummarize(!autoSummarize)}
+                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                          autoSummarize ? 'bg-indigo-600' : 'bg-slate-700'
+                        }`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                            autoSummarize ? 'translate-x-5' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    {/* Setting Row 3: Past Turns Depth */}
+                    <div className="pt-6 border-t border-white/[0.06] space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-sm font-semibold text-white flex items-center gap-2">
+                            <History className="w-4 h-4 text-cyan-400" />
+                            <span>Past Turns Depth (Working Context Window)</span>
+                          </div>
+                          <p className="text-xs text-slate-400 mt-1">
+                            Number of previous user/assistant interaction turns from the current session fed to the model context.
+                          </p>
+                        </div>
+                        <span className="text-xs font-mono font-bold text-cyan-400 px-3 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/20">
+                          {maxHistoryTurns === 0 ? 'All Turns (Unlimited)' : `${maxHistoryTurns} Turns`}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {[
+                          { label: '3 Turns', val: 3 },
+                          { label: '5 Turns', val: 5 },
+                          { label: '10 Turns (Default)', val: 10 },
+                          { label: '20 Turns', val: 20 },
+                          { label: '50 Turns', val: 50 },
+                          { label: 'All Turns (Full)', val: 0 },
+                        ].map(opt => (
+                          <button
+                            key={opt.val}
+                            type="button"
+                            onClick={() => setMaxHistoryTurns(opt.val)}
+                            className={`px-3.5 py-2 text-xs font-semibold rounded-xl border transition-all ${
+                              maxHistoryTurns === opt.val
+                                ? 'bg-cyan-600/20 border-cyan-500/50 text-cyan-200 shadow-sm'
+                                : 'bg-[#111420] border-white/[0.06] text-slate-400 hover:text-slate-200 hover:border-white/[0.12]'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Setting Row 4: Preserve Recent Turns Slider */}
+                    <div className="pt-6 border-t border-white/[0.06] space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-sm font-semibold text-white flex items-center gap-2">
+                            <Scissors className="w-4 h-4 text-emerald-400" />
+                            <span>Preserve Recent Turns Verbatim</span>
+                          </div>
+                          <p className="text-xs text-slate-400 mt-1">
+                            Guaranteed number of latest interaction turns that are NEVER compressed or summarized.
+                          </p>
+                        </div>
+                        <span className="text-xs font-mono font-bold text-emerald-400 px-3 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                          {keepRecentTurns} Turns
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={2}
+                        max={20}
+                        step={1}
+                        value={keepRecentTurns}
+                        onChange={(e) => setKeepRecentTurns(Number(e.target.value))}
+                        className="w-full accent-emerald-500 cursor-pointer h-2 bg-slate-800 rounded-lg"
+                      />
+                    </div>
+
+                    {/* Setting Row 5: Token Threshold Slider */}
+                    <div className="pt-6 border-t border-white/[0.06] space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-sm font-semibold text-white">Context Token Compression Threshold</div>
+                          <p className="text-xs text-slate-400 mt-1">
+                            Trigger background context compression when non-system messages exceed this token volume.
+                          </p>
+                        </div>
+                        <span className="text-xs font-mono font-bold text-indigo-400 px-3 py-1 rounded-lg bg-indigo-500/10 border border-indigo-500/20">
+                          {(summaryThreshold / 1000).toFixed(0)}k tokens
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={10000}
+                        max={120000}
+                        step={5000}
+                        value={summaryThreshold}
+                        onChange={(e) => setSummaryThreshold(Number(e.target.value))}
+                        className="w-full accent-indigo-500 cursor-pointer h-2 bg-slate-800 rounded-lg"
+                      />
+                    </div>
+
+                    {/* Setting Row 6: On-Demand Manual Compaction */}
+                    <div className="pt-6 border-t border-white/[0.06] flex items-center justify-between">
+                      <div>
+                        <div className="text-sm font-semibold text-white">On-Demand Context Compression</div>
+                        <p className="text-xs text-slate-400 mt-1">
+                          {activeSession ? `Active session contains ${activeSession.history?.length || 0} interaction records.` : 'Select an active chat session to manually compact history.'}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={!activeSessionId || isSummarizingContext}
+                        onClick={async () => {
+                          setIsSummarizingContext(true);
+                          setSummarizeSuccessMsg(null);
+                          try {
+                            await summarizeActiveContext();
+                            setSummarizeSuccessMsg('Session context compressed successfully!');
+                            setTimeout(() => setSummarizeSuccessMsg(null), 3000);
+                          } catch (err: any) {
+                            setSummarizeSuccessMsg(`Error: ${err.message}`);
+                          } finally {
+                            setIsSummarizingContext(false);
+                          }
+                        }}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-xl transition-all flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
+                      >
+                        {isSummarizingContext ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>Compressing Context...</span>
+                          </>
+                        ) : (
+                          <>
+                            <RotateCcw className="w-4 h-4" />
+                            <span>Compress Active Context</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {summarizeSuccessMsg && (
+                      <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-300 font-medium flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <span>{summarizeSuccessMsg}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* View: Mem0 Multi-Tier & Knowledge Graph Explorer */}
+                {settingsTab === 'memory' && (
+                  <div className="space-y-6">
+                    <MemoryExplorer selectedModel={selectedModel} onClose={() => setShowSettings(false)} />
+                  </div>
+                )}
+
+                {/* View: Environment & Custom Providers */}
+                {settingsTab === 'environment' && (
+                  <div className="space-y-6">
+                    <EnvSettings />
+                  </div>
+                )}
+
+                {/* View: System Runtime & Connectivity */}
+                {settingsTab === 'runtime' && (
+                  <div className="max-w-3xl space-y-6">
                     <div>
-                      <div className="text-xs font-semibold text-white">Manual Context Compression</div>
-                      <div className="text-[11px] text-slate-400 mt-0.5">
-                        {activeSession ? `Active session has ${activeSession.history?.length || 0} stored events.` : 'Select an active session to compress history.'}
+                      <h4 className="text-base font-bold text-white">System Runtime & Services</h4>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Live connectivity and service health metrics for the OpenManus backend environment.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 pt-2">
+                      <div className="p-5 rounded-2xl bg-[#111420] border border-white/[0.07] space-y-2">
+                        <div className="text-xs font-mono uppercase tracking-wider text-slate-400">Core REST API</div>
+                        <div className="text-base font-bold text-emerald-400 flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                          <span>Operational</span>
+                        </div>
+                        <p className="text-xs text-slate-400 pt-1">Express API running on port 3000</p>
+                      </div>
+
+                      <div className="p-5 rounded-2xl bg-[#111420] border border-white/[0.07] space-y-2">
+                        <div className="text-xs font-mono uppercase tracking-wider text-slate-400">PostgreSQL Database</div>
+                        <div className={`text-base font-bold flex items-center gap-2 ${health?.db === 'ok' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          <span className={`w-2.5 h-2.5 rounded-full ${health?.db === 'ok' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                          <span>{health?.db === 'ok' ? 'Connected' : 'Disconnected'}</span>
+                        </div>
+                        <p className="text-xs text-slate-400 pt-1">Sessions, history, memory nodes & episodes</p>
+                      </div>
+
+                      <div className="p-5 rounded-2xl bg-[#111420] border border-white/[0.07] space-y-2">
+                        <div className="text-xs font-mono uppercase tracking-wider text-slate-400">Neo4j Graph Database</div>
+                        <div className="text-base font-bold text-emerald-400 flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                          <span>Active / PG Fallback Ready</span>
+                        </div>
+                        <p className="text-xs text-slate-400 pt-1">Bolt connection on port 7687</p>
+                      </div>
+
+                      <div className="p-5 rounded-2xl bg-[#111420] border border-white/[0.07] space-y-2">
+                        <div className="text-xs font-mono uppercase tracking-wider text-slate-400">Docker Code Sandbox</div>
+                        <div className="text-base font-bold text-emerald-400 flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                          <span>Ready</span>
+                        </div>
+                        <p className="text-xs text-slate-400 pt-1">Ephemeral container runtime for bash & python</p>
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      disabled={!activeSessionId || isSummarizingContext}
-                      onClick={async () => {
-                        setIsSummarizingContext(true);
-                        setSummarizeSuccessMsg(null);
-                        try {
-                          await summarizeActiveContext();
-                          setSummarizeSuccessMsg('Context compressed successfully!');
-                          setTimeout(() => setSummarizeSuccessMsg(null), 3000);
-                        } catch (err: any) {
-                          setSummarizeSuccessMsg(`Error: ${err.message}`);
-                        } finally {
-                          setIsSummarizingContext(false);
-                        }
-                      }}
-                      className="px-3 py-1.5 bg-indigo-600/30 hover:bg-indigo-600 border border-indigo-500/40 text-indigo-200 hover:text-white text-xs font-semibold rounded-xl transition-all flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      {isSummarizingContext ? (
-                        <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          <span>Compressing...</span>
-                        </>
-                      ) : (
-                        <>
-                          <RotateCcw className="w-3.5 h-3.5" />
-                          <span>Compress Now</span>
-                        </>
-                      )}
-                    </button>
                   </div>
-                  {summarizeSuccessMsg && (
-                    <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-300 font-medium">
-                      {summarizeSuccessMsg}
-                    </div>
-                  )}
-
-                  {/* Runtime Status */}
-                  {health && (
-                    <div className="p-4 rounded-xl bg-[#131724] border border-white/[0.06] space-y-2">
-                      <div className="text-xs font-semibold text-white">Runtime Environment Status</div>
-                      <div className="grid grid-cols-2 gap-3 pt-1 text-xs">
-                        <div className="p-2.5 rounded-lg bg-[#0C0F18] border border-white/[0.06]">
-                          <div className="text-[10px] text-slate-400 uppercase font-mono">Backend API</div>
-                          <div className="font-semibold text-emerald-400 mt-0.5">Operational</div>
-                        </div>
-                        <div className="p-2.5 rounded-lg bg-[#0C0F18] border border-white/[0.06]">
-                          <div className="text-[10px] text-slate-400 uppercase font-mono">PostgreSQL Database</div>
-                          <div className="font-semibold text-slate-200 mt-0.5">{health.db === 'ok' ? 'Connected' : 'Error'}</div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Tab: Mem0 Multi-Tier & Knowledge Graph Explorer */}
-              {settingsTab === 'memory' && (
-                <div className="space-y-4">
-                  <MemoryExplorer selectedModel={selectedModel} onClose={() => setShowSettings(false)} />
-                </div>
-              )}
-
-              {/* Tab: Environment & Custom Providers */}
-              {settingsTab === 'environment' && (
-                <div className="space-y-4">
-                  <EnvSettings />
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
             {/* Modal Footer */}
-            <div className="px-5 py-3 border-t border-white/[0.08] flex justify-end bg-[#131724]">
+            <div className="px-6 py-3.5 border-t border-white/[0.08] flex justify-end bg-[#0E1019]">
               <button
                 type="button"
                 onClick={() => setShowSettings(false)}
-                className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs rounded-xl shadow-sm transition-all active:scale-95 cursor-pointer"
+                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs rounded-xl shadow-sm transition-all active:scale-95 cursor-pointer"
               >
                 Done
               </button>

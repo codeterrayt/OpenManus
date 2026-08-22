@@ -3,52 +3,52 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --bg-canvas: #090B10;
+    --bg-surface: #0F121C;
+    --bg-elevated: #141824;
+    --bg-hover: #1C2132;
+    --border-subtle: rgba(255, 255, 255, 0.08);
+    --border-hover: rgba(255, 255, 255, 0.15);
+    --primary: #6366F1;
+  }
+
   * {
     border-color: rgba(255, 255, 255, 0.08);
   }
 
   body {
-    @apply bg-background text-text-main font-sans;
+    background-color: var(--bg-canvas);
+    color: #F8FAFC;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
   
   h1, h2, h3, h4, h5, h6 {
-    @apply font-heading tracking-tight;
+    @apply font-heading tracking-tight text-white;
   }
 }
 
-/* Glassmorphism & Surface hierarchy */
-.glass-panel {
-  background: rgba(15, 18, 28, 0.85);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+/* Master surface classes */
+.surface-canvas {
+  background-color: #090B10;
+}
+
+.surface-nav {
+  background-color: #0F121C;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.surface-card {
+  background-color: #141824;
   border: 1px solid rgba(255, 255, 255, 0.07);
 }
 
-.glass-card {
-  background: rgba(19, 23, 34, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.glass-floating {
-  background: rgba(19, 23, 34, 0.92);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
+.surface-elevated {
+  background-color: #181D2C;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.6), 0 0 1px 1px rgba(255, 255, 255, 0.08);
-}
-
-/* Subtle accent glows */
-.glow-primary {
-  box-shadow: 0 0 20px rgba(99, 102, 241, 0.2);
-}
-
-.glow-subtle {
-  box-shadow: 0 0 15px rgba(255, 255, 255, 0.05);
 }
 
 /* Custom Scrollbars */
