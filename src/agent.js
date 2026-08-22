@@ -1339,6 +1339,22 @@ Before you call any browse_web action (except 'extract_text' or 'screenshot'), y
     }
   }
 
+  // Inject thinking & reasoning protocol into system prompt based on user configuration
+  const { thinkingBudget, reasoningEffort } = thinkingOptions || {};
+  if (thinkingBudget !== undefined && thinkingBudget !== null) {
+    const budget = Number(thinkingBudget);
+    if (budget > 0) {
+      systemPrompt += `\n\n### REASONING & EXTENDED THINKING PROTOCOL\n` +
+        `Thinking mode is ENABLED (target budget: ~${budget} tokens). Before answering or executing actions, structure your step-by-step plan, analyze edge cases, verify code syntax and logic, and self-correct any issues.`;
+    } else if (budget === 0) {
+      systemPrompt += `\n\n### DIRECT RESPONSE PROTOCOL\n` +
+        `Extended thinking is DISABLED. Provide direct answers and execute tool calls immediately without lengthy reasoning preambles.`;
+    }
+  } else if (reasoningEffort) {
+    systemPrompt += `\n\n### REASONING EFFORT PROTOCOL (${reasoningEffort.toUpperCase()})\n` +
+      `Operate with ${reasoningEffort} reasoning compute effort. Thoroughly evaluate requirements and verify solutions.`;
+  }
+
 
 
   const customProviders = activeConfig.customProviders || [];

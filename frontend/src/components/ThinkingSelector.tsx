@@ -19,10 +19,19 @@ export const ThinkingSelector: React.FC<ThinkingSelectorProps> = ({ className = 
   } = useChatStore();
 
   const [isOpen, setIsOpen] = useState(false);
-  const [customMode, setCustomMode] = useState(false);
+  const [activeTab, setActiveTab] = useState<'budget' | 'effort'>('budget');
   const popoverRef = useRef<HTMLDivElement>(null);
 
   const capabilities: ModelThinkingCapability = detectModelCapabilities(selectedModel);
+
+  // Sync tab with capability type on model change
+  useEffect(() => {
+    if (capabilities.type === 'openai_effort') {
+      setActiveTab('effort');
+    } else {
+      setActiveTab('budget');
+    }
+  }, [capabilities.type]);
 
   // Close popover on outside click
   useEffect(() => {
@@ -39,13 +48,11 @@ export const ThinkingSelector: React.FC<ThinkingSelectorProps> = ({ className = 
     };
   }, [isOpen]);
 
-  if (!capabilities.supportsThinking) {
-    return null;
-  }
-
   // Determine current active label
-  let activeLabel = 'Thinking';
-  if (capabilities.type === 'claude_budget' || capabilities.type === 'budget_tokens') {
+  let activeLabel = 'Thinking: 4K';
+  const isEffortMode = activeTab === 'effort' || capabilities.type === 'openai_effort';
+
+  if (!isEffortMode) {
     const currentBudget = thinkingBudget ?? capabilities.defaultBudget ?? 4096;
     if (currentBudget === 0) {
       activeLabel = 'Thinking: Off';
@@ -53,18 +60,17 @@ export const ThinkingSelector: React.FC<ThinkingSelectorProps> = ({ className = 
       const match = capabilities.presets.find(p => p.value === currentBudget);
       activeLabel = match ? `Thinking: ${match.shortLabel}` : `Thinking: ${Math.round(currentBudget / 1024)}k`;
     }
-  } else if (capabilities.type === 'openai_effort') {
+  } else {
     const currentEffort = reasoningEffort || 'medium';
     activeLabel = `Effort: ${currentEffort.charAt(0).toUpperCase() + currentEffort.slice(1)}`;
   }
 
   const handleSelectPreset = (preset: ThinkingPreset) => {
-    if (capabilities.type === 'claude_budget' || capabilities.type === 'budget_tokens') {
+    if (activeTab === 'budget' || capabilities.type !== 'openai_effort') {
       setThinkingBudget(Number(preset.value));
-    } else if (capabilities.type === 'openai_effort') {
+    } else {
       setReasoningEffort(String(preset.value) as 'low' | 'medium' | 'high');
     }
-    setCustomMode(false);
     setIsOpen(false);
   };
 
@@ -76,6 +82,12 @@ export const ThinkingSelector: React.FC<ThinkingSelectorProps> = ({ className = 
   const currentBudgetValue = thinkingBudget ?? capabilities.defaultBudget ?? 4096;
   const currentEffortValue = reasoningEffort || 'medium';
 
+  const effortPresets = [
+    { id: 'low', label: 'Low Effort', shortLabel: 'Low', value: 'low', description: 'Fast reasoning with minimal token overhead' },
+    { id: 'medium', label: 'Medium Effort', shortLabel: 'Medium', value: 'medium', description: 'Balanced reasoning for most problem-solving' },
+    { id: 'high', label: 'High Effort', shortLabel: 'High', value: 'high', description: 'Maximum compute for complex coding & math' }
+  ];
+
   return (
     <div className={`relative inline-block text-left ${className}`} ref={popoverRef}>
       {/* Trigger Button Pill */}
@@ -86,13 +98,13 @@ export const ThinkingSelector: React.FC<ThinkingSelectorProps> = ({ className = 
         className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-medium transition-all duration-150 border cursor-pointer select-none ${
           isOpen
             ? 'bg-purple-500/20 border-purple-500/50 text-purple-200 ring-1 ring-purple-500/30'
-            : currentBudgetValue === 0
+            : currentBudgetValue === 0 && activeTab === 'budget'
             ? 'bg-white/[0.04] hover:bg-white/[0.07] border-white/[0.08] text-slate-400 hover:text-slate-300'
             : 'bg-gradient-to-r from-purple-500/10 to-indigo-500/10 hover:from-purple-500/20 hover:to-indigo-500/20 border-purple-500/30 text-purple-300 shadow-sm'
         }`}
         title="Configure model thinking and reasoning limits"
       >
-        <Brain className={`w-3.5 h-3.5 ${currentBudgetValue > 0 || capabilities.type === 'openai_effort' ? 'text-purple-400 animate-pulse' : 'text-slate-500'}`} />
+        <Brain className={`w-3.5 h-3.5 ${currentBudgetValue > 0 || isEffortMode ? 'text-purple-400 animate-pulse' : 'text-slate-500'}`} />
         <span className="truncate">{activeLabel}</span>
         <ChevronDown className={`w-3 h-3 transition-transform duration-200 text-slate-400 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
@@ -120,8 +132,34 @@ export const ThinkingSelector: React.FC<ThinkingSelectorProps> = ({ className = 
             </div>
           </div>
 
-          {/* Claude / DeepSeek Budget Presets */}
-          {(capabilities.type === 'claude_budget' || capabilities.type === 'budget_tokens') && (
+          {/* Mode Switcher Tabs */}
+          <div className="flex items-center p-0.5 bg-[#141824] rounded-lg border border-white/[0.06]">
+            <button
+              type="button"
+              onClick={() => setActiveTab('budget')}
+              className={`flex-1 py-1 text-[11px] font-medium rounded-md transition-all cursor-pointer select-none ${
+                activeTab === 'budget'
+                  ? 'bg-purple-600/30 text-purple-200 shadow-sm border border-purple-500/30'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Token Budget (1k–64k)
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('effort')}
+              className={`flex-1 py-1 text-[11px] font-medium rounded-md transition-all cursor-pointer select-none ${
+                activeTab === 'effort'
+                  ? 'bg-purple-600/30 text-purple-200 shadow-sm border border-purple-500/30'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Reasoning Effort
+            </button>
+          </div>
+
+          {/* Budget Presets View */}
+          {activeTab === 'budget' && (
             <div className="space-y-2.5">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-semibold text-slate-300">
@@ -135,7 +173,7 @@ export const ThinkingSelector: React.FC<ThinkingSelectorProps> = ({ className = 
               {/* Grid of Presets */}
               <div className="grid grid-cols-4 gap-1.5">
                 {capabilities.presets.map((preset) => {
-                  const isSelected = currentBudgetValue === preset.value && !customMode;
+                  const isSelected = currentBudgetValue === preset.value;
                   return (
                     <button
                       key={preset.id}
@@ -184,20 +222,23 @@ export const ThinkingSelector: React.FC<ThinkingSelectorProps> = ({ className = 
             </div>
           )}
 
-          {/* OpenAI Reasoning Effort Selector */}
-          {capabilities.type === 'openai_effort' && (
+          {/* Reasoning Effort View */}
+          {activeTab === 'effort' && (
             <div className="space-y-2">
               <span className="text-[11px] font-semibold text-slate-300">
                 Reasoning Compute Level
               </span>
               <div className="grid grid-cols-3 gap-2">
-                {capabilities.presets.map((preset) => {
+                {effortPresets.map((preset) => {
                   const isSelected = currentEffortValue === preset.value;
                   return (
                     <button
                       key={preset.id}
                       type="button"
-                      onClick={() => handleSelectPreset(preset)}
+                      onClick={() => {
+                        setReasoningEffort(preset.value as 'low' | 'medium' | 'high');
+                        setIsOpen(false);
+                      }}
                       className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition-all cursor-pointer select-none ${
                         isSelected
                           ? 'bg-purple-500/20 border-purple-500/60 text-white shadow-sm ring-1 ring-purple-500/40'

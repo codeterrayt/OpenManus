@@ -2,23 +2,11 @@
 
 /**
  * Detects the thinking/reasoning capabilities and limits of any model ID.
- * Supports Claude extended thinking (1K to 64K), OpenAI reasoning effort (low/medium/high),
- * and DeepSeek-R1 / QwQ reasoning tokens.
+ * Returns appropriate thinking controls for Claude (1k-64k), OpenAI (low/med/high),
+ * DeepSeek-R1 (1k-32k), and General/Ollama models (1k-64k).
  */
 export function detectModelCapabilities(modelId) {
-  if (!modelId || typeof modelId !== 'string') {
-    return {
-      supportsThinking: false,
-      type: 'none',
-      providerType: 'none',
-      title: 'Standard Generation',
-      description: 'Standard model without specialized thinking controls.',
-      defaultPresetId: 'none',
-      presets: []
-    };
-  }
-
-  const id = modelId.toLowerCase();
+  const id = (modelId || '').toLowerCase();
 
   // 1. Claude / Anthropic Thinking Models (7-level limits + custom budget up to 64K)
   if (id.includes('claude') || id.includes('anthropic')) {
@@ -93,7 +81,7 @@ export function detectModelCapabilities(modelId) {
       maxBudget: 32768,
       stepBudget: 1024,
       presets: [
-        { id: 'off', label: 'Standard', shortLabel: 'Off', value: 0, description: 'Standard output without extra thinking budget' },
+        { id: 'off', label: 'Off', shortLabel: 'Off', value: 0, description: 'Standard output without extra thinking budget' },
         { id: '1k', label: '1K (Quick)', shortLabel: '1K', value: 1024, description: 'Quick step-by-step reasoning' },
         { id: '4k', label: '4K (Standard)', shortLabel: '4K', value: 4096, description: 'Balanced reasoning capacity' },
         { id: '8k', label: '8K (High)', shortLabel: '8K', value: 8192, description: 'Deep exploration for difficult tasks' },
@@ -102,14 +90,28 @@ export function detectModelCapabilities(modelId) {
     };
   }
 
-  // 4. Standard models (e.g. gpt-4o, llama-3.3, gemma-2, mistral)
+  // 4. General / Ollama / Other Models (Gemma, Llama, Qwen, Mistral, etc.)
+  const isLocal = id.includes(':') || !id.includes('/');
   return {
-    supportsThinking: false,
-    type: 'none',
-    providerType: 'none',
-    title: 'Standard Generation',
-    description: 'Standard model without specialized thinking controls.',
-    defaultPresetId: 'none',
-    presets: []
+    supportsThinking: true,
+    type: 'general_budget',
+    providerType: isLocal ? 'local' : 'general',
+    title: 'Model Thinking & Planning Depth',
+    description: 'Configures chain-of-thought depth and reasoning tokens allocated for problem-solving.',
+    defaultPresetId: '4k',
+    defaultBudget: 4096,
+    minBudget: 1024,
+    maxBudget: 64000,
+    stepBudget: 1024,
+    presets: [
+      { id: 'off', label: 'Off', shortLabel: 'Off', value: 0, description: 'Direct response without extensive reasoning' },
+      { id: '1k', label: '1K (Quick)', shortLabel: '1K', value: 1024, description: 'Light planning before taking actions' },
+      { id: '2k', label: '2K (Low)', shortLabel: '2K', value: 2048, description: 'Step-by-step reasoning' },
+      { id: '4k', label: '4K (Balanced)', shortLabel: '4K', value: 4096, description: 'Balanced reasoning & self-correction (Recommended)' },
+      { id: '8k', label: '8K (High)', shortLabel: '8K', value: 8192, description: 'Thorough planning for complex coding tasks' },
+      { id: '16k', label: '16K (Deep)', shortLabel: '16K', value: 16384, description: 'Deep architectural & math analysis' },
+      { id: '32k', label: '32K (Maximum)', shortLabel: '32K', value: 32768, description: 'Maximum reasoning depth' },
+      { id: '64k', label: '64K (Exhaustive)', shortLabel: '64K', value: 64000, description: 'Exhaustive exploration & validation' }
+    ]
   };
 }
