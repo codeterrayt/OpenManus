@@ -488,50 +488,71 @@ export const Sidebar: React.FC = () => {
                     </div>
 
                     {/* Setting Row 2: Master Auto-Summarize Toggle */}
-                    <div className="pt-6 border-t border-white/[0.06] flex items-center justify-between">
+                    <div className={`pt-6 border-t border-white/[0.06] flex items-center justify-between transition-opacity ${
+                      summaryStrategy !== 'rolling_summary' ? 'opacity-40' : ''
+                    }`}>
                       <div className="max-w-lg">
                         <div className="text-sm font-semibold text-white flex items-center gap-2">
                           <Zap className="w-4 h-4 text-slate-400" />
                           <span>Automatic Context Summarization</span>
+                          {summaryStrategy !== 'rolling_summary' && (
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-white/[0.06] text-slate-400 border border-white/[0.08]">
+                              Inactive in {summaryStrategy === 'sliding_window' ? 'Sliding Window' : 'Full History'}
+                            </span>
+                          )}
                         </div>
                         <p className="text-xs text-slate-400 mt-1">
-                          When active, automatically summarizes history before context overflow. Turn OFF to prevent all unprompted background summarization.
+                          {summaryStrategy === 'rolling_summary'
+                            ? 'When active, automatically summarizes older history before context overflow. Turn OFF to prevent all unprompted background summarization.'
+                            : summaryStrategy === 'sliding_window'
+                            ? 'Sliding window keeps latest turns without running LLM summarization. Auto-summarization is bypassed.'
+                            : 'Full history mode preserves all turns verbatim without summarization.'}
                         </p>
                       </div>
 
                       <button
                         type="button"
+                        disabled={summaryStrategy !== 'rolling_summary'}
                         onClick={() => setAutoSummarize(!autoSummarize)}
-                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                          autoSummarize ? 'bg-indigo-600' : 'bg-slate-700'
+                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:cursor-not-allowed ${
+                          autoSummarize && summaryStrategy === 'rolling_summary' ? 'bg-indigo-600' : 'bg-slate-700'
                         }`}
                       >
                         <span
                           className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                            autoSummarize ? 'translate-x-5' : 'translate-x-0'
+                            autoSummarize && summaryStrategy === 'rolling_summary' ? 'translate-x-5' : 'translate-x-0'
                           }`}
                         />
                       </button>
                     </div>
 
                     {/* Setting Row 3: Past Turns Depth */}
-                    <div className="pt-6 border-t border-white/[0.06] space-y-3">
+                    <div className={`pt-6 border-t border-white/[0.06] space-y-3 transition-opacity ${
+                      summaryStrategy === 'off' ? 'opacity-40' : ''
+                    }`}>
                       <div className="flex items-center justify-between">
                         <div>
                           <div className="text-sm font-semibold text-white flex items-center gap-2">
                             <History className="w-4 h-4 text-slate-400" />
                             <span>Past Turns Depth (Working Context Window)</span>
+                            {summaryStrategy === 'off' && (
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-white/[0.06] text-slate-400 border border-white/[0.08]">
+                                Bypassed in Full History
+                              </span>
+                            )}
                           </div>
                           <p className="text-xs text-slate-400 mt-1">
-                            Number of previous user/assistant interaction turns from the current session fed to the model context.
+                            {summaryStrategy === 'off'
+                              ? 'All turns are sent verbatim in Full History mode. Switch to Sliding Window or Rolling Summary to limit turn depth.'
+                              : 'Number of previous user/assistant interaction turns from the current session fed to the model context.'}
                           </p>
                         </div>
                         <span className="text-xs font-mono font-semibold text-slate-300 px-3 py-1 rounded-lg bg-white/[0.06] border border-white/[0.08]">
-                          {maxHistoryTurns === 0 ? 'All Turns (Unlimited)' : `${maxHistoryTurns} Turns`}
+                          {summaryStrategy === 'off' ? 'All Turns (Full)' : maxHistoryTurns === 0 ? 'All Turns (Unlimited)' : `${maxHistoryTurns} Turns`}
                         </span>
                       </div>
 
-                      <div className="flex flex-wrap gap-2 pt-1">
+                      <div className={`flex flex-wrap gap-2 pt-1 ${summaryStrategy === 'off' ? 'pointer-events-none' : ''}`}>
                         {[
                           { label: '3 Turns', val: 3 },
                           { label: '5 Turns', val: 5 },
@@ -543,9 +564,10 @@ export const Sidebar: React.FC = () => {
                           <button
                             key={opt.val}
                             type="button"
+                            disabled={summaryStrategy === 'off'}
                             onClick={() => setMaxHistoryTurns(opt.val)}
                             className={`px-3.5 py-2 text-xs font-semibold rounded-xl border transition-colors ${
-                              maxHistoryTurns === opt.val
+                              (summaryStrategy === 'off' && opt.val === 0) || (summaryStrategy !== 'off' && maxHistoryTurns === opt.val)
                                 ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm'
                                 : 'bg-[#111420] border-white/[0.06] text-slate-400 hover:text-slate-200 hover:border-white/[0.12]'
                             }`}
@@ -557,19 +579,28 @@ export const Sidebar: React.FC = () => {
                     </div>
 
                     {/* Setting Row 4: Preserve Recent Turns Slider */}
-                    <div className="pt-6 border-t border-white/[0.06] space-y-3">
+                    <div className={`pt-6 border-t border-white/[0.06] space-y-3 transition-opacity ${
+                      summaryStrategy !== 'rolling_summary' ? 'opacity-40' : ''
+                    }`}>
                       <div className="flex items-center justify-between">
                         <div>
                           <div className="text-sm font-semibold text-white flex items-center gap-2">
                             <Scissors className="w-4 h-4 text-slate-400" />
                             <span>Preserve Recent Turns Verbatim</span>
+                            {summaryStrategy !== 'rolling_summary' && (
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-white/[0.06] text-slate-400 border border-white/[0.08]">
+                                Not applicable in {summaryStrategy === 'sliding_window' ? 'Sliding Window' : 'Full History'}
+                              </span>
+                            )}
                           </div>
                           <p className="text-xs text-slate-400 mt-1">
-                            Guaranteed number of latest interaction turns that are NEVER compressed or summarized.
+                            {summaryStrategy === 'rolling_summary'
+                              ? 'Guaranteed number of latest interaction turns that are NEVER compressed or summarized.'
+                              : 'Only applies to Rolling Summary mode to protect the latest interaction turns from summarization.'}
                           </p>
                         </div>
                         <span className="text-xs font-mono font-semibold text-slate-300 px-3 py-1 rounded-lg bg-white/[0.06] border border-white/[0.08]">
-                          {keepRecentTurns} Turns
+                          {summaryStrategy === 'rolling_summary' ? `${keepRecentTurns} Turns` : '—'}
                         </span>
                       </div>
                       <input
@@ -577,19 +608,37 @@ export const Sidebar: React.FC = () => {
                         min={2}
                         max={20}
                         step={1}
+                        disabled={summaryStrategy !== 'rolling_summary'}
                         value={keepRecentTurns}
                         onChange={(e) => setKeepRecentTurns(Number(e.target.value))}
-                        className="w-full accent-indigo-500 cursor-pointer h-2 bg-slate-800 rounded-lg"
+                        className="w-full accent-indigo-500 cursor-pointer h-2 bg-slate-800 rounded-lg disabled:cursor-not-allowed"
                       />
                     </div>
 
                     {/* Setting Row 5: Token Threshold Slider */}
-                    <div className="pt-6 border-t border-white/[0.06] space-y-3">
+                    <div className={`pt-6 border-t border-white/[0.06] space-y-3 transition-opacity ${
+                      summaryStrategy !== 'rolling_summary' || !autoSummarize ? 'opacity-40' : ''
+                    }`}>
                       <div className="flex items-center justify-between">
                         <div>
-                          <div className="text-sm font-semibold text-white">Context Token Compression Threshold</div>
+                          <div className="text-sm font-semibold text-white flex items-center gap-2">
+                            <span>Context Token Compression Threshold</span>
+                            {summaryStrategy !== 'rolling_summary' ? (
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-white/[0.06] text-slate-400 border border-white/[0.08]">
+                                Inactive in {summaryStrategy === 'sliding_window' ? 'Sliding Window' : 'Full History'}
+                              </span>
+                            ) : !autoSummarize ? (
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-white/[0.06] text-slate-400 border border-white/[0.08]">
+                                Auto-Summarize is OFF
+                              </span>
+                            ) : null}
+                          </div>
                           <p className="text-xs text-slate-400 mt-1">
-                            Trigger background context compression when non-system messages exceed this token volume.
+                            {summaryStrategy !== 'rolling_summary'
+                              ? 'Threshold compaction only operates in Rolling Summary mode.'
+                              : !autoSummarize
+                              ? 'Automatic summarization is turned OFF. Turn it ON above to enable automatic threshold compaction.'
+                              : 'Trigger background context compression when non-system messages exceed this token volume.'}
                           </p>
                         </div>
                         <span className="text-xs font-mono font-bold text-indigo-400 px-3 py-1 rounded-lg bg-indigo-500/10 border border-indigo-500/20">
@@ -601,9 +650,10 @@ export const Sidebar: React.FC = () => {
                         min={10000}
                         max={120000}
                         step={5000}
+                        disabled={summaryStrategy !== 'rolling_summary' || !autoSummarize}
                         value={summaryThreshold}
                         onChange={(e) => setSummaryThreshold(Number(e.target.value))}
-                        className="w-full accent-indigo-500 cursor-pointer h-2 bg-slate-800 rounded-lg"
+                        className="w-full accent-indigo-500 cursor-pointer h-2 bg-slate-800 rounded-lg disabled:cursor-not-allowed"
                       />
                     </div>
 
