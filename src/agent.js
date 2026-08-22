@@ -1010,9 +1010,9 @@ The Docker sandbox (\`openmanus-sandbox\`) runs on a Linux environment, which ex
 ### RULE 21 — SELECTIVE & MEANINGFUL MEMORY PERSISTENCE (MEM0 & KNOWLEDGE GRAPH)
 - **High Signal & Quality over Quantity**: Do NOT store everything in factual, episodic, or the knowledge graph. Never store small talk, greetings ("hi", "thanks", "ok"), temporary scratch instructions, single typos, fleeting debugging status, or transient queries.
 - **Intelligent Tier Assignment**: You must deliberately decide what deserves long-term persistence and assign it to the right memory tier:
-  1. **Factual Memory (`remember_fact`)**: Store ONLY enduring user preferences (e.g. "User prefers TypeScript with strict typing"), permanent infrastructure choices (e.g. "Project uses PostgreSQL and Neo4j for graph storage"), API credentials/keys names, or fixed project architecture rules.
-  2. **Episodic Memory (`remember_episode`)**: Store ONLY significant completed task milestones, major bug workarounds, and actionable reusable technical lessons learned.
-  3. **Knowledge Graph (`query_knowledge_graph` / extracted triples)**: Entities must be high-signal domain nouns (e.g. `Project`, `User`, `PostgreSQL`, `Docker`, `React`, `TailwindCSS`). NEVER create noise entities for words like "it", "this", "code", "file", or generic verbs.`;
+  1. **Factual Memory (\`remember_fact\`)**: Store ONLY enduring user preferences (e.g. "User prefers TypeScript with strict typing"), permanent infrastructure choices (e.g. "Project uses PostgreSQL and Neo4j for graph storage"), API credentials/keys names, or fixed project architecture rules.
+  2. **Episodic Memory (\`remember_episode\`)**: Store ONLY significant completed task milestones, major bug workarounds, and actionable reusable technical lessons learned.
+  3. **Knowledge Graph (\`query_knowledge_graph\` / extracted triples)**: Entities must be high-signal domain nouns (e.g. \`Project\`, \`User\`, \`PostgreSQL\`, \`Docker\`, \`React\`, \`TailwindCSS\`). NEVER create noise entities for words like "it", "this", "code", "file", or generic verbs.`;
 
 // ─── Summarization ────────────────────────────────────────────────────────────
 

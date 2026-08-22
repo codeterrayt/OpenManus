@@ -6,8 +6,8 @@ import neo4j from 'neo4j-driver';
 import { query, getEnvSettings } from '../db.js';
 
 let _neo4jDriver = null;
-let _neo4jTested = false;
 let _neo4jAvailable = false;
+let _lastNeo4jCheck = 0;
 
 /**
  * Returns active Neo4j driver or null if unavailable.
@@ -34,16 +34,16 @@ async function getNeo4jDriver() {
     }
   }
 
-  if (!_neo4jTested) {
+  const now = Date.now();
+  if (!_neo4jAvailable && (now - _lastNeo4jCheck > 5000)) {
+    _lastNeo4jCheck = now;
     try {
       await _neo4jDriver.verifyConnectivity();
       _neo4jAvailable = true;
-      _neo4jTested = true;
       console.log('[Mem0] Connected to Neo4j Graph Database at', url);
     } catch (connErr) {
       _neo4jAvailable = false;
-      _neo4jTested = true;
-      console.log(`[Mem0] Neo4j offline (${connErr.message}), using PostgreSQL Knowledge Graph fallback.`);
+      // Periodic retry every 5s
     }
   }
 
@@ -280,13 +280,11 @@ export async function getGraphData() {
         }
       }
 
-      if (nodeMap.size > 0) {
-        return {
-          provider: 'neo4j',
-          nodes: Array.from(nodeMap.values()),
-          edges: edgeList
-        };
-      }
+      return {
+        provider: 'neo4j',
+        nodes: Array.from(nodeMap.values()),
+        edges: edgeList
+      };
     } catch (nErr) {
       console.warn('[Mem0] Neo4j query error, falling back to PG Graph:', nErr.message);
     } finally {
