@@ -377,10 +377,12 @@ const handleStreamEvent = (
   set: (fn: Partial<ChatState> | ((state: ChatState) => Partial<ChatState>)) => void
 ) => {
   const currentSession = get().activeSession;
+  const safeData = (data && typeof data === 'object') ? data : (typeof data === 'string' ? { message: data } : {});
   
   switch (event) {
     case 'session_created': {
-      const { sessionId } = data;
+      const sessionId = safeData.sessionId;
+      if (!sessionId) break;
       localStorage.setItem('openmanus_active_session_id', sessionId);
       set({ activeSessionId: sessionId });
       if (currentSession) {
@@ -395,16 +397,16 @@ const handleStreamEvent = (
       break;
     }
     case 'summary_created': {
-      set({ isSummarizing: false, lastSummary: data.summary });
+      set({ isSummarizing: false, lastSummary: safeData.summary || '' });
       break;
     }
     case 'step': {
-      const { step, total } = data;
-      set({ streamingSteps: { current: step, total } });
+      const { step, total } = safeData;
+      set({ streamingSteps: { current: step || 1, total: total || 100 } });
       break;
     }
     case 'llm_thinking': {
-      const { step } = data;
+      const step = safeData.step || 1;
       set({ 
         streamingThoughts: `Executing step ${step}... Agent is planning next action.`,
         activeToolCalls: {},
@@ -668,22 +670,20 @@ const handleStreamEvent = (
       break;
     }
     case 'answer': {
-      const { text } = data;
+      const text = safeData.text || '';
       set({ streamingContent: text });
       break;
     }
     case 'done': {
-      const { result } = data;
+      const result = safeData.result || '';
       set(() => {
         if (currentSession) {
           const updatedHistory = [...currentSession.history];
-          
-          // Check if last message is assistant's done text
           const hasAssistantAnswer = updatedHistory.some(
             m => m.role === 'assistant' && m.content === result
           );
 
-          if (!hasAssistantAnswer) {
+          if (!hasAssistantAnswer && result) {
             updatedHistory.push({
               role: 'assistant',
               content: result
@@ -712,12 +712,12 @@ const handleStreamEvent = (
       break;
     }
     case 'error': {
-      const { message } = data;
+      const errMsg = data?.message || (typeof data === 'string' ? data : 'An error occurred during agent execution.');
       set(() => {
         if (currentSession) {
           const updatedHistory = [...currentSession.history, {
             role: 'assistant' as const,
-            content: `Error: ${message}`
+            content: `Error: ${errMsg}`
           }];
           return {
             isStreaming: false,
@@ -728,7 +728,7 @@ const handleStreamEvent = (
             activeSession: {
               ...currentSession,
               status: 'failed',
-              result: message,
+              result: errMsg,
               history: updatedHistory,
               updated_at: new Date().toISOString()
             }

@@ -319,9 +319,9 @@ export const api = {
       eventSource.addEventListener(eventType, (e) => {
         try {
           const data = JSON.parse(e.data);
-          onEvent(eventType, data);
+          onEvent(eventType, data || {});
         } catch {
-          onEvent(eventType, e.data);
+          onEvent(eventType, typeof e.data === 'string' ? { message: e.data } : (e.data || {}));
         }
       });
     });
