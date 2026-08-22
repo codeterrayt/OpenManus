@@ -90,7 +90,8 @@ export const StreamingMessage: React.FC = () => {
 
   // Clean, honest status when waiting for LLM tokens
   const getLlmStatusText = () => {
-    const modelLabel = selectedModel ? `[${selectedModel}]` : '';
+    const cleanModel = selectedModel ? (selectedModel.includes('::') ? selectedModel.split('::')[1] : selectedModel) : '';
+    const modelLabel = cleanModel ? `[${cleanModel}]` : '';
     if (elapsedSeconds < 4) {
       return `Analyzing mission request and formulating plan ${modelLabel}... (${elapsedSeconds}s)`;
     }

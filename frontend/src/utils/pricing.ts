@@ -48,7 +48,8 @@ export const MODEL_PRICING_TABLE: Record<string, ModelPricing> = {
 
 export function getModelPricing(modelName: string): ModelPricing {
   if (!modelName) return { inputPerMillion: 0, outputPerMillion: 0, isFree: true };
-  const lower = modelName.toLowerCase();
+  const clean = modelName.includes('::') ? modelName.split('::')[1] : modelName;
+  const lower = clean.toLowerCase();
   
   for (const [key, pricing] of Object.entries(MODEL_PRICING_TABLE)) {
     if (lower.includes(key)) return pricing;

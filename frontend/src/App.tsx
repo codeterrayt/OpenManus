@@ -181,7 +181,7 @@ function App() {
               </span>
               {selectedModel && (
                 <span className="hidden lg:inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-mono bg-white/[0.04] text-slate-400 border border-white/[0.06] shrink-0">
-                  {selectedModel}
+                  {selectedModel.includes('::') ? selectedModel.split('::')[1] : selectedModel}
                 </span>
               )}
             </div>

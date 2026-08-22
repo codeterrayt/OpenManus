@@ -1292,8 +1292,17 @@ export async function runAgent(
   // Use liveConfig (DB-sourced) if provided, else fall back to static config
   const activeConfig = liveConfig ?? config;
 
-  // Determine LLM endpoint routing
-  const resolvedModel = model ?? activeConfig.ollama.model;
+  // Determine LLM endpoint routing with explicit provider disambiguation
+  let cleanModel = model;
+  let targetProvider = options.provider || thinkingOptions?.provider || null;
+
+  if (cleanModel && cleanModel.includes('::')) {
+    const parts = cleanModel.split('::');
+    targetProvider = targetProvider || parts[0];
+    cleanModel = parts[1];
+  }
+
+  const resolvedModel = cleanModel ?? activeConfig.ollama.model;
   const isOpenAI = resolvedModel && (
     resolvedModel.startsWith('gpt-') ||
     resolvedModel.startsWith('o1') ||
@@ -1309,10 +1318,12 @@ export async function runAgent(
     resolvedModel.includes('/') ||
     resolvedModel.startsWith('allam-')
   );
-  const targetModelName = isOpenAI ? (OPENAI_MODEL_MAPPING[resolvedModel] ?? resolvedModel) : resolvedModel;
+  const targetModelName = (isOpenAI && !targetProvider?.startsWith('custom:')) 
+    ? (OPENAI_MODEL_MAPPING[resolvedModel] ?? resolvedModel) 
+    : resolvedModel;
 
   const groqApiKey = activeConfig.groq?.apiKey || process.env.GROQ_API_KEY || '';
-  if (isGroq && !groqApiKey) {
+  if ((targetProvider === 'groq' || (!targetProvider && isGroq)) && !groqApiKey) {
     const errMsg = 'GROQ_API_KEY is not configured. Please add it in Settings → Environments or in your .env file.';
     console.error(`[Agent] ${errMsg}`);
     await finaliseSession(sessionId, 'failed', errMsg).catch(() => {});
@@ -1398,39 +1409,63 @@ Before you call any browse_web action (except 'extract_text' or 'screenshot'), y
 
 
   const customProviders = activeConfig.customProviders || [];
-  const matchingCustom = customProviders.find(p => Array.isArray(p.models) && p.models.includes(resolvedModel));
+  
+  let selectedCustom = null;
+  if (targetProvider && targetProvider.startsWith('custom:')) {
+    const customId = targetProvider.replace(/^custom:/, '');
+    selectedCustom = customProviders.find(p => p.id === customId || p.name === customId);
+  } else if (targetProvider && targetProvider !== 'openai' && targetProvider !== 'groq' && targetProvider !== 'ollama') {
+    selectedCustom = customProviders.find(p => p.id === targetProvider || p.name === targetProvider);
+  }
 
   let llmClient;
   let providerLabel = 'Ollama';
-  if (matchingCustom) {
-    providerLabel = matchingCustom.name || 'Custom';
+
+  if (selectedCustom) {
+    providerLabel = selectedCustom.name || 'Custom';
     llmClient = new OpenAI({
-      baseURL: matchingCustom.baseURL,
-      apiKey:  matchingCustom.apiKey || 'custom',
+      baseURL: selectedCustom.baseURL,
+      apiKey:  selectedCustom.apiKey || 'custom',
       defaultHeaders: {
         'User-Agent': 'Claude-Desktop/0.7.6',
       }
     });
-  } else if (isOpenAI) {
+  } else if (targetProvider === 'openai' || (!targetProvider && isOpenAI)) {
     providerLabel = 'OpenAI';
     const openaiKey = activeConfig.openai?.apiKey || process.env.OPENAI_API_KEY || '';
     const openaiURL = activeConfig.openai?.baseURL;
     llmClient = new OpenAI({
       apiKey:  openaiKey,
       ...(openaiURL && openaiURL !== 'https://api.openai.com/v1' ? { baseURL: openaiURL } : {}),
+      defaultHeaders: {
+        'User-Agent': 'Claude-Desktop/0.7.6',
+      }
     });
-  } else if (isGroq) {
+  } else if (targetProvider === 'groq' || (!targetProvider && isGroq)) {
     providerLabel = 'Groq';
     llmClient = new OpenAI({
       baseURL: activeConfig.groq?.baseURL || 'https://api.groq.com/openai/v1',
       apiKey:  groqApiKey,
     });
   } else {
-    providerLabel = 'Ollama';
-    llmClient = new OpenAI({
-      baseURL: activeConfig.ollama.baseURL,
-      apiKey:  activeConfig.ollama.apiKey,
-    });
+    // If no explicit provider was chosen, check if a custom provider provides this model
+    const matchingCustom = !targetProvider ? customProviders.find(p => Array.isArray(p.models) && p.models.includes(resolvedModel)) : null;
+    if (matchingCustom) {
+      providerLabel = matchingCustom.name || 'Custom';
+      llmClient = new OpenAI({
+        baseURL: matchingCustom.baseURL,
+        apiKey:  matchingCustom.apiKey || 'custom',
+        defaultHeaders: {
+          'User-Agent': 'Claude-Desktop/0.7.6',
+        }
+      });
+    } else {
+      providerLabel = 'Ollama';
+      llmClient = new OpenAI({
+        baseURL: activeConfig.ollama.baseURL,
+        apiKey:  activeConfig.ollama.apiKey,
+      });
+    }
   }
 
   console.log(`[Agent] Route LLM | model=${resolvedModel} (mapped to ${targetModelName}) provider=${providerLabel}`);

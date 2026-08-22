@@ -270,7 +270,7 @@ export const ChatInput: React.FC = () => {
                   {models.ollama && models.ollama.length > 0 && (
                     <optgroup label="Local Ollama Models" className="bg-[#121622] text-slate-400">
                       {models.ollama.map(opt => (
-                        <option key={opt} value={opt} className="bg-[#121622] text-white">
+                        <option key={`ollama::${opt}`} value={`ollama::${opt}`} className="bg-[#121622] text-white">
                           {opt}
                         </option>
                       ))}
@@ -279,7 +279,7 @@ export const ChatInput: React.FC = () => {
                   {models.openai && models.openai.length > 0 && (
                     <optgroup label="OpenAI Models" className="bg-[#121622] text-slate-400">
                       {models.openai.map(opt => (
-                        <option key={opt.id} value={opt.id} className="bg-[#121622] text-white">
+                        <option key={`openai::${opt.id}`} value={`openai::${opt.id}`} className="bg-[#121622] text-white">
                           {opt.name} ({opt.pricing})
                         </option>
                       ))}
@@ -288,7 +288,7 @@ export const ChatInput: React.FC = () => {
                   {models.groq && models.groq.length > 0 && (
                     <optgroup label="Groq Models (Free Tier)" className="bg-[#121622] text-slate-400">
                       {models.groq.map(opt => (
-                        <option key={opt.id} value={opt.id} className="bg-[#121622] text-white">
+                        <option key={`groq::${opt.id}`} value={`groq::${opt.id}`} className="bg-[#121622] text-white">
                           {opt.name} ({opt.limits || opt.pricing})
                         </option>
                       ))}
@@ -298,7 +298,7 @@ export const ChatInput: React.FC = () => {
                     provider.enabled && provider.models && provider.models.length > 0 ? (
                       <optgroup key={provider.id} label={`${provider.name} (Custom)`} className="bg-[#121622] text-slate-400">
                         {provider.models.map(opt => (
-                          <option key={opt} value={opt} className="bg-[#121622] text-white">
+                          <option key={`custom:${provider.id}::${opt}`} value={`custom:${provider.id}::${opt}`} className="bg-[#121622] text-white">
                             {opt}
                           </option>
                         ))}

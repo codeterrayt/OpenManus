@@ -847,11 +847,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const data = await api.getModels();
       set({ models: data });
 
-      const allModelIds = [
-        ...(data.ollama || []),
-        ...(data.openai || []).map((m: {id: string}) => m.id),
-        ...(data.groq   || []).map((m: {id: string}) => m.id),
-        ...(data.custom || []).flatMap((c: {models: string[]}) => c.models || []),
+      const allOptions: string[] = [
+        ...(data.ollama || []).map((m: string) => `ollama::${m}`),
+        ...(data.openai || []).map((m: {id: string}) => `openai::${m.id}`),
+        ...(data.groq   || []).map((m: {id: string}) => `groq::${m.id}`),
+        ...(data.custom || []).flatMap((c: {id: string; models: string[]}) => (c.models || []).map((m: string) => `custom:${c.id}::${m}`)),
       ];
 
       // Get default model from backend config via health check
@@ -865,20 +865,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
       const currentModel = get().selectedModel;
 
-      // If the currently selected model is no longer in the available list
-      // (e.g. provider was disabled), auto-switch to the first available model.
-      const modelNotAvailable = allModelIds.length > 0 && !allModelIds.includes(currentModel);
-      const switchToDefault   =
-        currentModel === 'qwen2.5:7b' &&
-        backendDefaultModel &&
-        allModelIds.includes(backendDefaultModel);
+      // Match currentModel against qualified option values
+      let matched = allOptions.find(opt => opt === currentModel);
+      if (!matched && currentModel) {
+        matched = allOptions.find(opt => opt.endsWith(`::${currentModel}`) || opt === currentModel);
+      }
 
-      if (modelNotAvailable || switchToDefault) {
-        const preferred = backendDefaultModel && allModelIds.includes(backendDefaultModel)
-          ? backendDefaultModel
-          : allModelIds[0];
+      if (matched && matched !== currentModel) {
+        set({ selectedModel: matched });
+        localStorage.setItem('openmanus_selected_model', matched);
+      } else if (!matched && allOptions.length > 0) {
+        const defaultMatch = backendDefaultModel ? allOptions.find(opt => opt.endsWith(`::${backendDefaultModel}`)) : null;
+        const preferred = defaultMatch || allOptions[0];
         set({ selectedModel: preferred });
-        console.log(`[Store] Auto-switched model to "${preferred}" (previous was unavailable/disabled).`);
+        localStorage.setItem('openmanus_selected_model', preferred);
+        console.log(`[Store] Auto-switched model to "${preferred}".`);
       }
     } catch (err) {
       console.error('[Store] Error loading models:', err);

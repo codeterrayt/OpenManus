@@ -390,18 +390,26 @@ async function generateSensibleTitle(goal, liveConfig, model) {
 //   done             { sessionId, result }
 //   error            { message }
 app.post('/run', async (req, res) => {
-  const { goal, sessionId, agent, model, summaryThreshold, useMemory, thinkingBudget, reasoningEffort } = req.body ?? {};
+  const { goal, sessionId, agent, model, provider, summaryThreshold, useMemory, thinkingBudget, reasoningEffort } = req.body ?? {};
   if (!goal || typeof goal !== 'string') {
     return res.status(400).json({ error: 'Body must contain a "goal" string.' });
+  }
+
+  let requestedModel = model;
+  let requestedProvider = provider || null;
+  if (requestedModel && requestedModel.includes('::')) {
+    const parts = requestedModel.split('::');
+    requestedProvider = requestedProvider || parts[0];
+    requestedModel = parts[1];
   }
 
   // ── Provider enabled pre-flight check ────────────────────────────────────────
   // Reject before opening SSE if the requested model belongs to a disabled provider.
   try {
     const settings = await getEnvSettings();
-    if (model) {
-      const isGroqModel   = model.startsWith('llama-') || model.startsWith('llama3-') || model.startsWith('deepseek-') || model.startsWith('gemma2-') || model.includes('groq/') || model.startsWith('allam-');
-      const isOpenAIModel = model.startsWith('gpt-') || model.startsWith('o1') || model.startsWith('o3') || model.startsWith('o4');
+    if (requestedModel) {
+      const isGroqModel   = requestedModel.startsWith('llama-') || requestedModel.startsWith('llama3-') || requestedModel.startsWith('deepseek-') || requestedModel.startsWith('gemma2-') || requestedModel.startsWith('groq/') || requestedModel.startsWith('allam-');
+      const isOpenAIModel = requestedModel.startsWith('gpt-') || requestedModel.startsWith('o1') || requestedModel.startsWith('o3') || requestedModel.startsWith('o4');
 
       let customProviders = [];
       try {
@@ -411,17 +419,20 @@ app.post('/run', async (req, res) => {
         }
       } catch {}
 
-      const matchingCustom = customProviders.find(p => Array.isArray(p.models) && p.models.includes(model));
-      const isCustomModel = !!matchingCustom;
-      const isOllamaModel = !isGroqModel && !isOpenAIModel && !isCustomModel;
+      const matchingCustom = requestedProvider?.startsWith('custom:')
+        ? customProviders.find(p => p.id === requestedProvider.replace(/^custom:/, ''))
+        : customProviders.find(p => Array.isArray(p.models) && p.models.includes(requestedModel));
+
+      const isCustomModel = requestedProvider?.startsWith('custom:') || (!requestedProvider && !!matchingCustom);
+      const isOllamaModel = requestedProvider === 'ollama' || (!requestedProvider && !isGroqModel && !isOpenAIModel && !isCustomModel);
 
       const ollamaEnabled = settings['OLLAMA_ENABLED'] !== 'false';
       const groqEnabled   = settings['GROQ_ENABLED']   === 'true';
       const openaiEnabled = settings['OPENAI_ENABLED'] === 'true';
 
-      if (isCustomModel && matchingCustom.enabled === false) return res.status(403).json({ error: `Provider "${matchingCustom.name}" is disabled in Environment Settings. Enable it to use this model.` });
-      if (isGroqModel   && !groqEnabled)   return res.status(403).json({ error: 'Groq is disabled in Environment Settings. Enable it to use Groq models.' });
-      if (isOpenAIModel && !openaiEnabled) return res.status(403).json({ error: 'OpenAI is disabled in Environment Settings. Enable it to use OpenAI models.' });
+      if (isCustomModel && matchingCustom && matchingCustom.enabled === false) return res.status(403).json({ error: `Provider "${matchingCustom.name}" is disabled in Environment Settings. Enable it to use this model.` });
+      if ((requestedProvider === 'groq' || (!requestedProvider && isGroqModel)) && !groqEnabled) return res.status(403).json({ error: 'Groq is disabled in Environment Settings. Enable it to use Groq models.' });
+      if ((requestedProvider === 'openai' || (!requestedProvider && isOpenAIModel)) && !openaiEnabled) return res.status(403).json({ error: 'OpenAI is disabled in Environment Settings. Enable it to use OpenAI models.' });
       if (isOllamaModel && !ollamaEnabled) return res.status(403).json({ error: 'Ollama is disabled in Environment Settings. Enable it to use local models.' });
     }
   } catch { /* DB unavailable — let the run proceed and let agent handle it */ }
@@ -445,7 +456,7 @@ app.post('/run', async (req, res) => {
       activeRuns.set(activeSessionKey, abortController);
 
       // Trigger parallel AI title generation
-      generateSensibleTitle(goal, liveConfigRef || config, model).then(async (cleanTitle) => {
+      generateSensibleTitle(goal, liveConfigRef || config, requestedModel).then(async (cleanTitle) => {
         try {
           await getPool().query('UPDATE sessions SET title = $1 WHERE id = $2', [cleanTitle, activeSessionKey]);
           send('session_title_updated', { sessionId: activeSessionKey, title: cleanTitle });
@@ -479,12 +490,12 @@ app.post('/run', async (req, res) => {
       (type, data) => send(type, data), 
       sessionId, 
       agent, 
-      model, 
+      requestedModel, 
       summaryThreshold, 
       useMemory, 
       liveConfig,
-      { thinkingBudget, reasoningEffort },
-      { signal: abortController.signal }
+      { thinkingBudget, reasoningEffort, provider: requestedProvider },
+      { signal: abortController.signal, provider: requestedProvider }
     );
   } catch (err) {
     console.error('[API] /run error:', err);

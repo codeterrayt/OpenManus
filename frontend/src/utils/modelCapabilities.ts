@@ -31,7 +31,8 @@ export interface ModelThinkingCapability {
  * DeepSeek-R1 (1k-32k), and General/Ollama models (1k-64k).
  */
 export function detectModelCapabilities(modelId: string): ModelThinkingCapability {
-  const id = (modelId || '').toLowerCase();
+  const clean = (modelId || '').includes('::') ? modelId.split('::')[1] : (modelId || '');
+  const id = clean.toLowerCase();
 
   // 1. Claude / Anthropic Thinking Models (7-level limits + custom budget up to 64K)
   if (id.includes('claude') || id.includes('anthropic')) {
