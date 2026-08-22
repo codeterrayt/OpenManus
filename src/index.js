@@ -44,11 +44,18 @@ app.use('/env', envRouter);
 
 // ─── Get Models List (Ollama + OpenAI + Groq) ────────────────────────────────
 const OPENAI_MODELS = [
+  { id: 'gpt-5.6-sol', name: 'GPT-5.6 Sol', pricing: '$3.00/$15.00 per 1M', inputPrice: '$3.00', outputPrice: '$15.00' },
+  { id: 'gpt-5.6-terra', name: 'GPT-5.6 Terra', pricing: '$2.50/$12.00 per 1M', inputPrice: '$2.50', outputPrice: '$12.00' },
+  { id: 'gpt-5.6-luna', name: 'GPT-5.6 Luna', pricing: '$1.50/$6.00 per 1M', inputPrice: '$1.50', outputPrice: '$6.00' },
   { id: 'gpt-5.5-pro', name: 'GPT-5.5 Pro', pricing: '$30.00/$180.00 per 1M', inputPrice: '$30.00', outputPrice: '$180.00' },
   { id: 'gpt-5.5-flagship', name: 'GPT-5.5 Flagship', pricing: '$5.00/$30.00 per 1M', inputPrice: '$5.00', outputPrice: '$30.00' },
   { id: 'gpt-5.4-standard', name: 'GPT-5.4 Standard', pricing: '$2.50/$15.00 per 1M', inputPrice: '$2.50', outputPrice: '$15.00' },
+  { id: 'gpt-5.4-terra', name: 'GPT-5.4 Terra', pricing: '$2.50/$15.00 per 1M', inputPrice: '$2.50', outputPrice: '$15.00' },
   { id: 'gpt-5.4-mini', name: 'GPT-5.4 Mini', pricing: '$0.75/$4.50 per 1M', inputPrice: '$0.75', outputPrice: '$4.50' },
   { id: 'gpt-5.4-nano', name: 'GPT-5.4 Nano', pricing: '$0.20/$1.25 per 1M', inputPrice: '$0.20', outputPrice: '$1.25' },
+  { id: 'gpt-5.2-luna', name: 'GPT-5.2 Luna', pricing: '$0.50/$2.00 per 1M', inputPrice: '$0.50', outputPrice: '$2.00' },
+  { id: 'claude-opus-4-8', name: 'Claude Opus 4.8', pricing: '$15.00/$75.00 per 1M', inputPrice: '$15.00', outputPrice: '$75.00' },
+  { id: 'claude-opus-5', name: 'Claude Opus 5', pricing: '$15.00/$75.00 per 1M', inputPrice: '$15.00', outputPrice: '$75.00' },
   { id: 'o4-mini', name: 'o4-mini', pricing: '$0.55/$2.20 per 1M', inputPrice: '$0.55', outputPrice: '$2.20' },
   { id: 'o3-mini', name: 'o3-mini', pricing: '$1.10/$4.40 per 1M', inputPrice: '$1.10', outputPrice: '$4.40' },
   { id: 'o1', name: 'o1', pricing: '$15.00/$60.00 per 1M', inputPrice: '$15.00', outputPrice: '$60.00' },
@@ -146,7 +153,49 @@ app.get('/models', async (_req, res) => {
   }
 
   // ── OpenAI models ──────────────────────────────────────────────────────────
-  const openaiModels = openaiEnabled ? OPENAI_MODELS : [];
+  let openaiModels = [];
+  if (openaiEnabled) {
+    openaiModels = [...OPENAI_MODELS];
+    const openaiApiKey  = useDbSource ? (settings['OPENAI_API_KEY']  || config.openai.apiKey)  : config.openai.apiKey;
+    const openaiBaseURL = useDbSource ? (settings['OPENAI_BASE_URL'] || config.openai.baseURL) : config.openai.baseURL;
+
+    if (openaiApiKey) {
+      try {
+        const openaiClient = new OpenAI({
+          baseURL: openaiBaseURL || 'https://api.openai.com/v1',
+          apiKey: openaiApiKey,
+          defaultHeaders: {
+            'User-Agent': 'Claude-Desktop/0.7.6',
+          }
+        });
+        const liveList = await openaiClient.models.list();
+        if (liveList && Array.isArray(liveList.data) && liveList.data.length > 0) {
+          const apiModelIds = liveList.data.map(m => m.id).filter(Boolean);
+          const merged = [];
+          for (const modelId of apiModelIds) {
+            if (modelId.includes('whisper') || modelId.includes('tts') || modelId.includes('embedding') || modelId.includes('dall-e') || modelId.includes('babbage') || modelId.includes('davinci')) continue;
+            const staticModel = OPENAI_MODELS.find(m => m.id === modelId);
+            merged.push(staticModel ?? {
+              id: modelId,
+              name: modelId.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+              pricing: '$2.50/$10.00 per 1M',
+              inputPrice: '$2.50',
+              outputPrice: '$10.00'
+            });
+          }
+          // Also append static models so none are lost
+          for (const sm of OPENAI_MODELS) {
+            if (!merged.some(m => m.id === sm.id)) {
+              merged.push(sm);
+            }
+          }
+          if (merged.length > 0) openaiModels = merged;
+        }
+      } catch (err) {
+        console.warn('[API] Failed to fetch live OpenAI/Router models, using default list:', err.message);
+      }
+    }
+  }
 
   // ── Custom Providers models ───────────────────────────────────────────────
   let customProviders = [];
@@ -168,8 +217,8 @@ app.get('/models', async (_req, res) => {
     if (provider.enabled === false) continue;
     let providerModels = Array.isArray(provider.models) ? [...provider.models] : [];
 
-    // If models array is empty and baseURL is provided, try to discover models
-    if (providerModels.length === 0 && provider.baseURL) {
+    // Always attempt live model discovery if baseURL is provided
+    if (provider.baseURL) {
       try {
         const client = new OpenAI({
           baseURL: provider.baseURL,
@@ -180,7 +229,10 @@ app.get('/models', async (_req, res) => {
         });
         const list = await client.models.list();
         if (list && Array.isArray(list.data) && list.data.length > 0) {
-          providerModels = list.data.map(m => m.id).filter(Boolean);
+          const liveIds = list.data.map(m => m.id).filter(Boolean);
+          // Merge discovered models with any statically configured models
+          const combined = Array.from(new Set([...providerModels, ...liveIds]));
+          if (combined.length > 0) providerModels = combined;
         }
       } catch {
         // try ollama /api/tags fallback
@@ -192,7 +244,9 @@ app.get('/models', async (_req, res) => {
           if (tagsRes.ok) {
             const data = await tagsRes.json();
             if (data && Array.isArray(data.models)) {
-              providerModels = data.models.map(m => m.name || m.model).filter(Boolean);
+              const liveIds = data.models.map(m => m.name || m.model).filter(Boolean);
+              const combined = Array.from(new Set([...providerModels, ...liveIds]));
+              if (combined.length > 0) providerModels = combined;
             }
           }
         } catch {

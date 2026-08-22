@@ -15,8 +15,19 @@ export const MODEL_PRICING_TABLE: Record<string, ModelPricing> = {
   'claude-3-5-haiku': { inputPerMillion: 0.8, outputPerMillion: 4.0 },
   'claude-3-opus': { inputPerMillion: 15.0, outputPerMillion: 75.0 },
   'claude-opus-4-8': { inputPerMillion: 15.0, outputPerMillion: 75.0 },
+  'claude-opus-5': { inputPerMillion: 15.0, outputPerMillion: 75.0 },
 
-  // OpenAI
+  // OpenAI & Router Models (Sol, Terra, Luna)
+  'gpt-5.6-sol': { inputPerMillion: 3.0, outputPerMillion: 15.0 },
+  'gpt-5.6-terra': { inputPerMillion: 2.5, outputPerMillion: 12.0 },
+  'gpt-5.6-luna': { inputPerMillion: 1.5, outputPerMillion: 6.0 },
+  'gpt-5.5-pro': { inputPerMillion: 30.0, outputPerMillion: 180.0 },
+  'gpt-5.5-flagship': { inputPerMillion: 5.0, outputPerMillion: 30.0 },
+  'gpt-5.4-standard': { inputPerMillion: 2.5, outputPerMillion: 15.0 },
+  'gpt-5.4-terra': { inputPerMillion: 2.5, outputPerMillion: 15.0 },
+  'gpt-5.4-mini': { inputPerMillion: 0.75, outputPerMillion: 4.5 },
+  'gpt-5.4-nano': { inputPerMillion: 0.20, outputPerMillion: 1.25 },
+  'gpt-5.2-luna': { inputPerMillion: 0.50, outputPerMillion: 2.0 },
   'gpt-4o': { inputPerMillion: 2.5, outputPerMillion: 10.0 },
   'gpt-4o-mini': { inputPerMillion: 0.15, outputPerMillion: 0.6 },
   'o1': { inputPerMillion: 15.0, outputPerMillion: 60.0 },
