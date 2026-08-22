@@ -31,7 +31,8 @@ import {
   crystallizeSessionEpisode,
   queryGraphRelations,
   searchMemories,
-  getGraphData
+  getGraphData,
+  isMeaningfulMemory
 } from './memory/mem0.js';
 
 // ─── LLM Client (Ollama via OpenAI-compatible API) ───────────────────────────
@@ -543,12 +544,26 @@ async function dispatchTool(toolName, args, llmClient, targetModelName, sessionI
       return `Skill "${args.name}" saved successfully.`;
     }
     case 'remember_fact': {
+      if (!isMeaningfulMemory(args.fact)) {
+        return JSON.stringify({ 
+          success: false, 
+          message: `Fact skipped: Low information density or trivial conversational statement. Only store enduring project facts, tech stack choices, or user preferences.`,
+          stored: false
+        });
+      }
       const fact = await addFactualMemory(args.fact, {}, sessionId);
-      return JSON.stringify({ success: true, message: `Fact recorded in Mem0 & Knowledge Graph: "${args.fact}"`, id: fact?.id });
+      return JSON.stringify({ success: true, message: `Fact recorded in Mem0 & Knowledge Graph: "${args.fact}"`, id: fact?.id, stored: true });
     }
     case 'remember_episode': {
+      if (!args.goal || args.goal.trim().length < 8) {
+        return JSON.stringify({
+          success: false,
+          message: `Episode skipped: Goal description is too brief or empty.`,
+          stored: false
+        });
+      }
       const ep = await addEpisodicMemory(args.goal, args.outcome, args.key_actions || [], args.lesson, sessionId);
-      return JSON.stringify({ success: true, message: `Episodic memory created for "${args.goal}"`, id: ep?.id });
+      return JSON.stringify({ success: true, message: `Episodic memory created for "${args.goal}"`, id: ep?.id, stored: true });
     }
     case 'query_knowledge_graph': {
       const relations = await queryGraphRelations(args.keywords || []);
@@ -559,8 +574,15 @@ async function dispatchTool(toolName, args, llmClient, targetModelName, sessionI
       return JSON.stringify({ success: true, count: results.length, memories: results });
     }
     case 'remember_info': {
+      if (!isMeaningfulMemory(args.info)) {
+        return JSON.stringify({ 
+          success: false, 
+          message: `Fact skipped: Low information density or trivial statement.`,
+          stored: false
+        });
+      }
       const fact = await addFactualMemory(args.info, {}, sessionId);
-      return JSON.stringify({ success: true, message: `Successfully remembered: "${args.info}"`, id: fact?.id });
+      return JSON.stringify({ success: true, message: `Successfully remembered: "${args.info}"`, id: fact?.id, stored: true });
     }
     case 'consolidate_memories': {
       if (!llmClient) {
@@ -983,7 +1005,14 @@ The Docker sandbox (\`openmanus-sandbox\`) runs on a Linux environment, which ex
        { "label": "Frontend", "value": 85 },{ "label": "Backend", "value": 60 }
      ] }</c1_ui>
   7. **list** — Ordered/unordered list:
-     <c1_ui>{ "type": "list", "title": "Steps", "ordered": true, "items": ["Install","Configure","Deploy"] }</c1_ui>`;
+     <c1_ui>{ "type": "list", "title": "Steps", "ordered": true, "items": ["Install","Configure","Deploy"] }</c1_ui>
+
+### RULE 21 — SELECTIVE & MEANINGFUL MEMORY PERSISTENCE (MEM0 & KNOWLEDGE GRAPH)
+- **High Signal & Quality over Quantity**: Do NOT store everything in factual, episodic, or the knowledge graph. Never store small talk, greetings ("hi", "thanks", "ok"), temporary scratch instructions, single typos, fleeting debugging status, or transient queries.
+- **Intelligent Tier Assignment**: You must deliberately decide what deserves long-term persistence and assign it to the right memory tier:
+  1. **Factual Memory (`remember_fact`)**: Store ONLY enduring user preferences (e.g. "User prefers TypeScript with strict typing"), permanent infrastructure choices (e.g. "Project uses PostgreSQL and Neo4j for graph storage"), API credentials/keys names, or fixed project architecture rules.
+  2. **Episodic Memory (`remember_episode`)**: Store ONLY significant completed task milestones, major bug workarounds, and actionable reusable technical lessons learned.
+  3. **Knowledge Graph (`query_knowledge_graph` / extracted triples)**: Entities must be high-signal domain nouns (e.g. `Project`, `User`, `PostgreSQL`, `Docker`, `React`, `TailwindCSS`). NEVER create noise entities for words like "it", "this", "code", "file", or generic verbs.`;
 
 // ─── Summarization ────────────────────────────────────────────────────────────
 

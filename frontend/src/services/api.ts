@@ -271,6 +271,17 @@ export const api = {
   },
 
   /**
+   * Delete a node from the Knowledge Graph
+   */
+  async deleteGraphNode(id: string): Promise<{ success: boolean; id: string }> {
+    const res = await fetch(`${API_BASE_URL}/memories/graph/nodes/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) throw new Error('Failed to delete graph node');
+    return res.json();
+  },
+
+  /**
    * Query Knowledge Graph relations for given keywords
    */
   async queryGraph(keywords: string[]): Promise<{ relations: Array<{ source: string; relation: string; target: string }> }> {

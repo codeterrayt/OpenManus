@@ -57,8 +57,24 @@ function sanitizeId(str) {
   return String(str || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_').slice(0, 80);
 }
 
+const INVALID_ENTITY_NAMES = new Set([
+  'it', 'this', 'that', 'something', 'anything', 'code', 'file', 'files', 'error',
+  'thing', 'things', 'line', 'lines', 'test', 'item', 'value', 'the', 'an', 'a',
+  'to', 'for', 'of', 'in', 'on', 'at', 'with', 'from', 'user', 'me', 'we', 'they',
+  'option', 'options', 'setting', 'settings', 'null', 'undefined', 'true', 'false'
+]);
+
+function isValidEntityName(name) {
+  if (!name || typeof name !== 'string') return false;
+  const clean = name.trim().toLowerCase();
+  if (clean.length < 2 || clean.length > 50) return false;
+  if (INVALID_ENTITY_NAMES.has(clean)) return false;
+  if (/^\d+$/.test(clean)) return false;
+  return true;
+}
+
 /**
- * Extracts entity-relation-entity triples from text using semantic patterns
+ * Extracts entity-relation-entity triples from text using semantic patterns with strict validity filters
  */
 export function extractTriples(text) {
   if (!text || typeof text !== 'string') return [];
@@ -67,11 +83,11 @@ export function extractTriples(text) {
 
   for (const line of lines) {
     const trimmed = line.trim();
-    if (!trimmed || trimmed.length < 5) continue;
+    if (!trimmed || trimmed.length < 6) continue;
 
     // Pattern: User prefers / likes / wants X
-    let m = trimmed.match(/(?:user|i)\s+(?:prefers?|likes?|uses?|wants?|loves?)\s+([a-zA-Z0-9_.-]+)/i);
-    if (m && m[1]) {
+    let m = trimmed.match(/(?:user|developer)\s+(?:prefers?|likes?|uses?|wants?|loves?)\s+([a-zA-Z0-9_.-]+)/i);
+    if (m && isValidEntityName(m[1])) {
       triples.push({
         source: { name: 'User', label: 'User' },
         relation: 'PREFERS',
@@ -80,8 +96,8 @@ export function extractTriples(text) {
     }
 
     // Pattern: Project / System uses / requires / built with X
-    m = trimmed.match(/(?:project|system|app|service|tool|agent)\s+(?:uses?|requires?|built with|runs on)\s+([a-zA-Z0-9_.-]+)/i);
-    if (m && m[1]) {
+    m = trimmed.match(/(?:project|system|app|service|backend|frontend)\s+(?:uses?|requires?|built with|runs on)\s+([a-zA-Z0-9_.-]+)/i);
+    if (m && isValidEntityName(m[1])) {
       triples.push({
         source: { name: 'Project', label: 'Project' },
         relation: 'USES',
@@ -89,19 +105,19 @@ export function extractTriples(text) {
       });
     }
 
-    // Pattern: Key / Token / Secret for X is Y
-    m = trimmed.match(/(?:api key|token|url|endpoint|port|password)\s+(?:for|of)\s+([a-zA-Z0-9_.-]+)/i);
-    if (m && m[1]) {
+    // Pattern: Service / Database configured with / uses X
+    m = trimmed.match(/(?:database|db|postgres|neo4j|redis|docker)\s+(?:uses?|configured with|listens on)\s+([a-zA-Z0-9_.-]+)/i);
+    if (m && isValidEntityName(m[1])) {
       triples.push({
-        source: { name: m[1].trim(), label: 'Service' },
-        relation: 'HAS_CONFIG',
-        target: { name: 'Config', label: 'Configuration' }
+        source: { name: 'Infrastructure', label: 'Service' },
+        relation: 'CONFIGURED_WITH',
+        target: { name: m[1].trim(), label: 'Technology' }
       });
     }
 
     // Pattern: X depends on Y
     m = trimmed.match(/([a-zA-Z0-9_.-]+)\s+(?:depends on|relies on)\s+([a-zA-Z0-9_.-]+)/i);
-    if (m && m[1] && m[2]) {
+    if (m && isValidEntityName(m[1]) && isValidEntityName(m[2])) {
       triples.push({
         source: { name: m[1].trim(), label: 'Component' },
         relation: 'DEPENDS_ON',
@@ -119,9 +135,15 @@ export function extractTriples(text) {
 export async function saveTriples(triples) {
   if (!Array.isArray(triples) || triples.length === 0) return;
 
+  const validTriples = triples.filter(t => 
+    t.source && isValidEntityName(t.source.name) && 
+    t.target && isValidEntityName(t.target.name)
+  );
+  if (validTriples.length === 0) return;
+
   const neo4jDriver = await getNeo4jDriver().catch(() => null);
 
-  for (const t of triples) {
+  for (const t of validTriples) {
     const sName = String(t.source.name || 'Entity').trim();
     const sLabel = String(t.source.label || 'Entity').trim();
     const sId = sanitizeId(sName);
@@ -176,6 +198,40 @@ export async function saveTriples(triples) {
       }
     }
   }
+}
+
+/**
+ * Deletes a node and its attached relationships from Knowledge Graph (PostgreSQL & Neo4j).
+ */
+export async function deleteGraphNode(nodeId) {
+  if (!nodeId) return { success: false, error: 'Node ID required' };
+  const cleanId = sanitizeId(nodeId);
+
+  // 1. Delete from PostgreSQL
+  try {
+    await query(`DELETE FROM memory_edges WHERE source_id = $1 OR target_id = $1`, [cleanId]);
+    await query(`DELETE FROM memory_nodes WHERE id = $1`, [cleanId]);
+  } catch (err) {
+    console.warn('[Mem0] Failed to delete node from PG Graph:', err.message);
+  }
+
+  // 2. Delete from Neo4j
+  const neo4jDriver = await getNeo4jDriver().catch(() => null);
+  if (neo4jDriver) {
+    const session = neo4jDriver.session();
+    try {
+      await session.run(
+        `MATCH (n:Entity {id: $id}) DETACH DELETE n`,
+        { id: cleanId }
+      );
+    } catch (err) {
+      console.warn('[Mem0] Failed to delete node from Neo4j:', err.message);
+    } finally {
+      await session.close().catch(() => {});
+    }
+  }
+
+  return { success: true, id: cleanId };
 }
 
 /**
@@ -447,11 +503,54 @@ export async function retrieveAgentContext(goal, sessionId = null) {
   }
 }
 
+const TRIVIAL_CHAT_PATTERNS = [
+  /^(hi|hello|hey|greetings|good\s+(morning|afternoon|evening)|yo|sup)[\s!.?]*$/i,
+  /^(thanks|thank\s+you|thx|cheers|ok|okay|k|cool|great|awesome|got\s+it|nice|perfect|done)[\s!.?]*$/i,
+  /^(yes|no|yep|nope|sure|agree|disagree|right|correct)[\s!.?]*$/i,
+  /^(what\s+time|who\s+are\s+you|how\s+are\s+you|help|clear|cls|reset)[\s!.?]*$/i,
+  /^(show\s+me|list\s+files|dir|ls|pwd|cd|cat|echo)[\s!.?]*$/i
+];
+
 /**
- * Automatically crystallizes completed session into an episodic memory and updates graph.
+ * Evaluates whether a piece of information has meaningful, lasting value
+ * before polluting the factual, episodic, or knowledge graph stores.
+ */
+export function isMeaningfulMemory(content) {
+  if (!content || typeof content !== 'string') return false;
+  const trimmed = content.trim();
+  if (trimmed.length < 10) return false;
+
+  for (const pattern of TRIVIAL_CHAT_PATTERNS) {
+    if (pattern.test(trimmed)) return false;
+  }
+
+  // Meaningful signals (explicit preferences, system configs, technical decisions, milestone lessons)
+  const MEANINGFUL_SIGNALS = [
+    /\b(prefers?|wants?|likes?|always|never|requires?|uses?|built\s+with|configured|standard|convention)\b/i,
+    /\b(architecture|pattern|framework|database|stack|api|key|token|endpoint|schema|model|docker|node|react|postgres|neo4j)\b/i,
+    /\b(fixed|solved|resolved|milestone|implemented|created|deployed|bug|workaround|lesson|episode)\b/i
+  ];
+
+  return MEANINGFUL_SIGNALS.some(regex => regex.test(trimmed));
+}
+
+/**
+ * Automatically crystallizes completed session into an episodic memory and updates graph
+ * ONLY if the session represents meaningful work, lessons, or completed goals.
  */
 export async function crystallizeSessionEpisode(sessionId, goal, history = [], result = null, status = 'done') {
-  if (!goal) return null;
+  if (!goal || typeof goal !== 'string') return null;
+  const cleanGoal = goal.trim();
+
+  // Reject trivial single-word/filler tasks
+  if (cleanGoal.length < 8) return null;
+  for (const pattern of TRIVIAL_CHAT_PATTERNS) {
+    if (pattern.test(cleanGoal)) {
+      console.log(`[Mem0] Skipped crystallization for trivial chat goal: "${cleanGoal}"`);
+      return null;
+    }
+  }
+
   try {
     const outcome = status === 'done' ? 'success' : 'failure';
     const keyActions = [];
@@ -467,12 +566,18 @@ export async function crystallizeSessionEpisode(sessionId, goal, history = [], r
       }
     }
 
+    // If no actions and no meaningful result, skip polluting memory
+    if (keyActions.length === 0 && !isMeaningfulMemory(cleanGoal)) {
+      console.log(`[Mem0] Skipped crystallization for non-actionable query: "${cleanGoal}"`);
+      return null;
+    }
+
     let lesson = result ? String(result).slice(0, 200).replace(/\n+/g, ' ') : `Completed ${keyActions.length} actions.`;
     if (outcome === 'failure') {
       lesson = `Task encountered issue: ${lesson}`;
     }
 
-    const episode = await addEpisodicMemory(goal, outcome, keyActions, lesson, sessionId);
+    const episode = await addEpisodicMemory(cleanGoal, outcome, keyActions, lesson, sessionId);
     console.log(`[Mem0] Crystallized session episode for session ${sessionId} (outcome: ${outcome})`);
     return episode;
   } catch (err) {

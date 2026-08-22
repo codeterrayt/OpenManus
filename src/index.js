@@ -23,7 +23,8 @@ import {
   searchMemories, 
   getGraphData, 
   queryGraphRelations, 
-  crystallizeSessionEpisode 
+  crystallizeSessionEpisode,
+  deleteGraphNode
 } from './memory/mem0.js';
 import envRouter from './routes/env.js';
 
@@ -716,6 +717,15 @@ app.get('/memories/graph', async (_req, res) => {
   try {
     const graphData = await getGraphData();
     res.json(graphData);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/memories/graph/nodes/:id', async (req, res) => {
+  try {
+    const result = await deleteGraphNode(req.params.id);
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
