@@ -23,6 +23,7 @@ import { runDockerCli }                            from './tools/docker_cli.js';
 import { readFile, writeFile, appendFile, listDir, deleteFile, makeDir, moveFile, copyFile, statFile } from './tools/docker_fs.js';
 import { browseWeb, getActiveBrowserState, inspectPageHtml } from './tools/browser.js';
 import { listSkills, getSkill, saveSkill } from './tools/skills.js';
+import { calculateCost } from './utils/pricing.js';
 
 // ─── LLM Client (Ollama via OpenAI-compatible API) ───────────────────────────
 
@@ -1570,9 +1571,14 @@ Before you call any browse_web action (except 'extract_text' or 'screenshot'), y
     let finishReason = null;
     const tcAccum    = {};  // index → accumulated tool-call object
     let inThinkingMode = false;
+    let apiUsage     = null;
 
     try {
       for await (const chunk of stream) {
+        if (chunk.usage) {
+          apiUsage = chunk.usage;
+        }
+
         const choice = chunk.choices?.[0];
         if (!choice) continue;
 
@@ -1676,12 +1682,28 @@ Before you call any browse_web action (except 'extract_text' or 'screenshot'), y
       onEvent('clear_stream', { preamble: fullContent });
     }
 
-    // Reconstruct the message object for history
+    // Calculate official token usage and cost for this step
+    const promptTokens = apiUsage?.prompt_tokens ?? (estimateTokens(messages) || 120);
+    const completionTokens = apiUsage?.completion_tokens ?? Math.ceil((fullContent?.length || 0) / 4);
+    const totalTokens = apiUsage?.total_tokens ?? (promptTokens + completionTokens);
+    const costInfo = calculateCost(promptTokens, completionTokens, resolvedModel);
+
+    // Reconstruct the message object for history with usage metrics
     const message = {
       role:    'assistant',
       content: fullContent || null,
       ...(hasToolCalls ? { tool_calls: toolCalls } : {}),
+      usage: {
+        prompt_tokens: promptTokens,
+        completion_tokens: completionTokens,
+        total_tokens: totalTokens,
+        cost: costInfo.cost,
+        formatted_cost: costInfo.formattedCost,
+        is_free: costInfo.isFree
+      }
     };
+
+    onEvent('usage', message.usage);
 
     messages.push(message);
     await appendHistory(sessionId, [message]).catch(() => {});

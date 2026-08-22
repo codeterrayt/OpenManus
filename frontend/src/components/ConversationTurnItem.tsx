@@ -168,6 +168,21 @@ export function groupHistoryIntoTurns(history: any[], activeModel: string): Conv
         }
         currentTurn.estimatedCompletionTokens += Math.ceil(msg.content.length / 4);
       }
+
+      // If official usage was saved from the provider API, use it directly
+      if (msg.usage) {
+        currentTurn.estimatedPromptTokens = msg.usage.prompt_tokens || currentTurn.estimatedPromptTokens;
+        currentTurn.estimatedCompletionTokens = msg.usage.completion_tokens || currentTurn.estimatedCompletionTokens;
+        if (msg.usage.cost !== undefined && msg.usage.cost !== null) {
+          currentTurn.cost = msg.usage.cost;
+        }
+        if (msg.usage.formatted_cost) {
+          currentTurn.formattedCost = msg.usage.formatted_cost;
+        }
+        if (msg.usage.is_free !== undefined) {
+          currentTurn.isFree = msg.usage.is_free;
+        }
+      }
     } else if (msg.role === 'tool') {
       if (currentTurn && msg.tool_call_id) {
         const targetTc = currentTurn.toolCalls.find(t => t.id === msg.tool_call_id);
@@ -186,7 +201,7 @@ export function groupHistoryIntoTurns(history: any[], activeModel: string): Conv
           targetTc.result = parsedResult;
           if (isError) {
             targetTc.error = parsedResult && typeof parsedResult === 'object' 
-              ? ((parsedResult as any).error || (parsedResult as any).stderr)
+              ? ((parsedResult as any).error || (parsedResult as any).stderr) 
               : String(parsedResult);
           }
         }
@@ -210,10 +225,16 @@ function finalizeTurn(turn: ConversationTurn, activeModel: string) {
     turn.finalAnswer = cleanContent;
   }
   turn.totalTokens = turn.estimatedPromptTokens + turn.estimatedCompletionTokens;
-  const costInfo = calculateCost(turn.estimatedPromptTokens, turn.estimatedCompletionTokens, activeModel);
-  turn.cost = costInfo.cost;
-  turn.formattedCost = costInfo.formattedCost;
-  turn.isFree = costInfo.isFree;
+  if (!turn.cost && (turn.estimatedPromptTokens > 0 || turn.estimatedCompletionTokens > 0)) {
+    const costInfo = calculateCost(turn.estimatedPromptTokens, turn.estimatedCompletionTokens, activeModel);
+    turn.cost = costInfo.cost;
+    turn.formattedCost = costInfo.formattedCost;
+    turn.isFree = costInfo.isFree;
+  } else if (!turn.formattedCost || turn.formattedCost === '$0.00') {
+    const costInfo = calculateCost(turn.estimatedPromptTokens, turn.estimatedCompletionTokens, activeModel);
+    turn.formattedCost = costInfo.formattedCost;
+    turn.isFree = costInfo.isFree;
+  }
 }
 
 interface ConversationTurnItemProps {

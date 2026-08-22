@@ -25,6 +25,8 @@ function App() {
     activeSession,
     isStreaming,
     streamingContent,
+    streamingThoughts,
+    activeToolCalls,
     selectedModel,
     sidebarCollapsed,
     toggleSidebar,
@@ -45,7 +47,7 @@ function App() {
     if (!el) return;
     const onScroll = () => {
       const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-      const isScrolledUp = distFromBottom > 100;
+      const isScrolledUp = distFromBottom > 80;
       userScrolledUp.current = isScrolledUp;
       setShowScrollBottom(isScrolledUp);
     };
@@ -59,6 +61,14 @@ function App() {
     if (force || !userScrolledUp.current) {
       if (scrollRaf.current) cancelAnimationFrame(scrollRaf.current);
       scrollRaf.current = requestAnimationFrame(() => {
+        const el = scrollContainerRef.current;
+        if (el) {
+          if (behavior === 'auto') {
+            el.scrollTop = el.scrollHeight;
+          } else {
+            el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+          }
+        }
         messagesEndRef.current?.scrollIntoView({ behavior });
         if (force) {
           userScrolledUp.current = false;
@@ -68,15 +78,23 @@ function App() {
     }
   };
 
+  // Scroll to bottom when opening/switching session
+  useEffect(() => {
+    userScrolledUp.current = false;
+    scrollToBottom(true, 'smooth');
+  }, [activeSession?.id]);
+
+  // Scroll when history array length changes
   useEffect(() => {
     scrollToBottom(false, 'smooth');
   }, [activeSession?.history?.length]);
 
+  // Scroll during live streaming updates
   useEffect(() => {
-    if (streamingContent) {
+    if (isStreaming) {
       scrollToBottom(false, 'auto');
     }
-  }, [streamingContent]);
+  }, [isStreaming, streamingContent, streamingThoughts, Object.keys(activeToolCalls).length]);
 
   const suggestions = [
     {
