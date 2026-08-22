@@ -6,10 +6,10 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node --watch src/index.js",
+    "dev": "node --watch src/ src/index.js",
     "ui:dev": "pnpm --filter frontend dev",
     "ui:build": "pnpm --filter frontend build",
-    "dev:all": "concurrently --names \"BACKEND,FRONTEND\" --prefix-colors \"magenta,cyan\" \"node --watch src/index.js\" \"pnpm --filter frontend dev\"",
+    "dev:all": "concurrently --names \"BACKEND,FRONTEND\" --prefix-colors \"magenta,cyan\" \"node --watch src/ src/index.js\" \"pnpm --filter frontend dev\"",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "browser:install": "puppeteer browsers install chrome"
