@@ -161,38 +161,71 @@ function App() {
       {/* Center Layout: Main Chat Viewport */}
       <main className="flex-1 flex flex-col h-full bg-[#090B10] overflow-hidden relative">
         {/* Desktop Header */}
-        <header className="hidden md:flex w-full h-13 bg-[#0A0C13] border-b border-white/[0.06] px-5 items-center justify-between z-20 shrink-0">
-          <div className="flex items-center gap-3">
+        <header className="hidden md:flex w-full h-14 bg-[#0A0C13] border-b border-white/[0.06] px-6 items-center justify-between z-20 shrink-0">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
             {sidebarCollapsed && (
               <button 
                 type="button"
                 onClick={toggleSidebar}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs bg-[#121622] hover:bg-[#161B2A] text-slate-300 hover:text-white border border-white/[0.08] font-medium transition-colors"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs bg-[#121622] hover:bg-[#161B2A] text-slate-300 hover:text-white border border-white/[0.08] font-medium transition-colors cursor-pointer shrink-0"
                 title="Expand Sidebar"
               >
                 <PanelLeft className="w-3.5 h-3.5 text-indigo-400" />
                 <span>Show Sidebar</span>
               </button>
             )}
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
-              <span className="font-semibold text-xs text-slate-300 tracking-tight">
-                {activeSession ? activeSession.goal : 'New Mission'}
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0"></span>
+              <span className="font-semibold text-sm text-slate-200 tracking-tight truncate">
+                {activeSession?.title || (activeSession?.goal ? activeSession.goal.slice(0, 50) : 'New Chat')}
               </span>
+              {selectedModel && (
+                <span className="hidden lg:inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-mono bg-white/[0.04] text-slate-400 border border-white/[0.06] shrink-0">
+                  {selectedModel}
+                </span>
+              )}
             </div>
           </div>
           
-          {rightPanelCollapsed && (
-            <button 
-              type="button"
-              onClick={toggleRightPanel}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs bg-[#121622] hover:bg-[#161B2A] text-slate-300 hover:text-white border border-white/[0.08] font-medium transition-colors"
-              title="Open Workspace"
-            >
-              <PanelRight className="w-3.5 h-3.5 text-indigo-400" />
-              <span>Workspace</span>
-            </button>
-          )}
+          <div className="flex items-center gap-3 shrink-0 mr-4">
+            {activeSession && (() => {
+              const turns = groupHistoryIntoTurns(activeSession.history || [], selectedModel);
+              let pTokens = 0;
+              let cTokens = 0;
+              for (const t of turns) {
+                pTokens += t.estimatedPromptTokens;
+                cTokens += t.estimatedCompletionTokens;
+              }
+              const cost = calculateCost(pTokens, cTokens, selectedModel);
+              return (
+                <div 
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-medium border ${
+                    cost.isFree
+                      ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
+                      : 'bg-purple-500/10 text-purple-200 border-purple-500/20'
+                  }`}
+                  title={`Prompt tokens: ~${pTokens}, Completion tokens: ~${cTokens}`}
+                >
+                  <Coins className="w-3.5 h-3.5 text-purple-400" />
+                  <span>{cost.formattedCost}</span>
+                  <span className="text-white/[0.2]">•</span>
+                  <span className="text-slate-400">{formatTokenCount(pTokens + cTokens)} tok</span>
+                </div>
+              );
+            })()}
+
+            {rightPanelCollapsed && (
+              <button 
+                type="button"
+                onClick={toggleRightPanel}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-[#121622] hover:bg-[#161B2A] text-slate-200 hover:text-white border border-white/[0.08] font-medium transition-colors shadow-sm cursor-pointer ml-1"
+                title="Open Workspace"
+              >
+                <PanelRight className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Workspace</span>
+              </button>
+            )}
+          </div>
         </header>
 
         {/* Scrollable messages zone */}
@@ -202,65 +235,9 @@ function App() {
         >
           {activeSession ? (() => {
             const conversationTurns = groupHistoryIntoTurns(activeSession.history || [], selectedModel);
-            
-            // Calculate total session tokens and live cost
-            let promptTokens = 0;
-            let completionTokens = 0;
-            let totalTurns = conversationTurns.length;
-            for (const t of conversationTurns) {
-              promptTokens += t.estimatedPromptTokens;
-              completionTokens += t.estimatedCompletionTokens;
-            }
-            const totalTokens = promptTokens + completionTokens;
-            const sessionCost = calculateCost(promptTokens, completionTokens, selectedModel);
 
             return (
               <div className="max-w-3xl mx-auto space-y-6 pb-6">
-                {/* Mission Goal Summary Header */}
-                <div className="rounded-2xl p-4 bg-[#0F131E] border border-white/[0.08] flex items-center justify-between gap-4 flex-wrap">
-                  <div className="space-y-0.5 select-text min-w-0 flex-1">
-                    <div className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider font-mono">
-                      Mission Directive
-                    </div>
-                    <h2 className="text-sm font-semibold text-white truncate">
-                      {activeSession.goal}
-                    </h2>
-                  </div>
-                  
-                  <div className="flex items-center gap-2">
-                    {/* Live Total Session Cost Badge */}
-                    <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-mono font-medium border ${
-                      sessionCost.isFree
-                        ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
-                        : 'bg-gradient-to-r from-purple-500/15 to-indigo-500/15 text-purple-200 border-purple-500/30 shadow-sm'
-                    }`}
-                    title={`Session prompt tokens: ~${promptTokens}, completion tokens: ~${completionTokens}`}
-                    >
-                      <Coins className="w-3.5 h-3.5 text-purple-400" />
-                      <span>{sessionCost.formattedCost}</span>
-                      <span className="text-white/[0.2]">•</span>
-                      <span className="text-slate-400">{formatTokenCount(totalTokens)} tok</span>
-                      {totalTurns > 0 && (
-                        <>
-                          <span className="text-white/[0.2]">•</span>
-                          <span className="text-slate-400">{totalTurns} {totalTurns === 1 ? 'turn' : 'turns'}</span>
-                        </>
-                      )}
-                    </div>
-
-                    {rightPanelCollapsed && (
-                      <button
-                        type="button"
-                        onClick={toggleRightPanel}
-                        className="shrink-0 flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs bg-[#151926] hover:bg-[#1A2030] text-slate-300 hover:text-white border border-white/[0.08] transition-colors cursor-pointer"
-                      >
-                        <PanelRight className="w-3.5 h-3.5 text-indigo-400" />
-                        <span>Workspace</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-
                 {/* Conversational Turns Loop */}
                 <div className="space-y-6">
                   {conversationTurns.map((turn, idx) => (

@@ -29,6 +29,7 @@ export interface Session {
   created_at: string;
   updated_at: string;
   goal: string;
+  title?: string;
   status: 'pending' | 'running' | 'done' | 'failed';
   history: Message[];
   logs: ToolLog[];
@@ -290,6 +291,24 @@ export const api = {
   },
 
   /**
+   * Stop / abort a running agent session immediately on the server
+   */
+  async stopSession(id?: string | null): Promise<{ success: boolean }> {
+    try {
+      const url = id ? `${API_BASE_URL}/sessions/${id}/stop` : `${API_BASE_URL}/stop`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: id })
+      });
+      return await res.json();
+    } catch (err) {
+      console.warn('[API] stopSession error:', err);
+      return { success: false };
+    }
+  },
+
+  /**
    * Listen / reconnect to an active session's live event stream
    */
   listenSessionEvents(
@@ -301,6 +320,7 @@ export const api = {
 
     const eventTypes = [
       'session_created',
+      'session_title_updated',
       'summarizing',
       'summary_created',
       'step',
@@ -309,7 +329,9 @@ export const api = {
       'clear_stream',
       'tool_draft',
       'tool_start',
+      'tool_stream_output',
       'tool_result',
+      'usage',
       'answer',
       'done',
       'error'

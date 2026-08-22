@@ -139,6 +139,7 @@ export const Sidebar: React.FC = () => {
 
   const filteredSessions = useMemo(() => {
     return sessions.filter(s => 
+      s.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       s.goal?.toLowerCase().includes(searchQuery.toLowerCase())
     );
   }, [sessions, searchQuery]);
@@ -652,6 +653,7 @@ interface SessionItemProps {
   session: {
     id?: string;
     goal?: string;
+    title?: string;
     status?: string;
     created_at?: string;
   };
@@ -676,7 +678,7 @@ const SessionItem: React.FC<SessionItemProps> = ({ session, isActive, onSelect }
     >
       <div className="flex justify-between items-start gap-2 w-full">
         <span className={`text-xs font-medium truncate flex-1 ${isActive ? 'text-white font-semibold' : 'text-slate-400 hover:text-white'}`}>
-          {session.goal || 'Untitled Mission'}
+          {session.title || session.goal || 'Untitled Mission'}
         </span>
         
         {/* Status dot */}

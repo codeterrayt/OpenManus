@@ -283,6 +283,41 @@ function broadcastSessionEvent(sessionId, event, data) {
   }
 }
 
+// Active run registry for instant cancellation
+const activeRuns = new Map();
+
+async function generateSensibleTitle(goal, liveConfig, model) {
+  try {
+    const prompt = `Generate a concise, sensible 3-6 word title for this user request. Output ONLY the title text, nothing else. No quotes, no markdown, no punctuation at end. Examples: "Streamlit Needle 2 App", "Python Fractal Visualizer", "Landing Page Component", "PostgreSQL Docker Setup".\n\nUser request: ${goal.slice(0, 250)}`;
+    
+    const client = new OpenAI({
+      baseURL: liveConfig.openai.apiKey ? liveConfig.openai.baseURL : (liveConfig.ollama.baseURL || 'http://localhost:11434/v1'),
+      apiKey: liveConfig.openai.apiKey || 'ollama'
+    });
+
+    const targetModel = liveConfig.openai.apiKey 
+      ? (liveConfig.openai.model || 'gpt-4o-mini') 
+      : (liveConfig.ollama.model || 'gemma4:e4b');
+
+    const completion = await client.chat.completions.create({
+      model: targetModel,
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 20,
+      temperature: 0.3
+    });
+
+    const title = completion.choices[0]?.message?.content?.trim().replace(/^["']|["']$/g, '').replace(/[.]+$/, '');
+    if (title && title.length >= 3 && title.length <= 60 && !title.toLowerCase().includes('error')) {
+      return title;
+    }
+  } catch (err) {
+    console.warn('[API] AI Title generation fallback:', err.message);
+  }
+
+  const words = goal.trim().split(/\s+/).slice(0, 5).join(' ');
+  return words.length > 35 ? `${words.slice(0, 32)}...` : words;
+}
+
 // ─── Run agent (SSE) ─────────────────────────────────────────────────────────
 //
 // Every agent lifecycle event is forwarded as a named SSE event so the UI can
@@ -290,10 +325,12 @@ function broadcastSessionEvent(sessionId, event, data) {
 //
 // Event catalogue:
 //   session_created  { sessionId }
+//   session_title_updated { sessionId, title }
 //   step             { step, total }
 //   llm_thinking     { step }
 //   tool_draft       { id, tool, argumentsDelta, rawArguments }
 //   tool_start       { id, tool, args }
+//   tool_stream_output { id, tool, chunk, stream, liveStdout, liveStderr }
 //   tool_result      { id, tool, result, raw, error }
 //   answer           { text }
 //   done             { sessionId, result }
@@ -342,11 +379,24 @@ app.post('/run', async (req, res) => {
   res.setHeader('X-Accel-Buffering', 'no'); // disable nginx buffering if proxied
   res.flushHeaders();
 
+  const abortController = new AbortController();
   let activeSessionKey = sessionId || null;
+  if (activeSessionKey) {
+    activeRuns.set(activeSessionKey, abortController);
+  }
 
   const send = (event, data) => {
     if (event === 'session_created' && data?.sessionId) {
       activeSessionKey = data.sessionId;
+      activeRuns.set(activeSessionKey, abortController);
+
+      // Trigger parallel AI title generation
+      generateSensibleTitle(goal, liveConfigRef || config, model).then(async (cleanTitle) => {
+        try {
+          await getPool().query('UPDATE sessions SET title = $1 WHERE id = $2', [cleanTitle, activeSessionKey]);
+          send('session_title_updated', { sessionId: activeSessionKey, title: cleanTitle });
+        } catch (_) {}
+      });
     }
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     if (activeSessionKey) {
@@ -361,11 +411,14 @@ app.post('/run', async (req, res) => {
     } catch (_) {}
   }, 15_000);
 
+  let liveConfigRef = null;
+
   try {
     send('start', { goal });
 
     // Resolve config from DB if ENV_SOURCE=db, otherwise use .env
     const liveConfig = await resolveConfig(getEnvSettings);
+    liveConfigRef = liveConfig;
 
     await runAgent(
       goal, 
@@ -376,15 +429,45 @@ app.post('/run', async (req, res) => {
       summaryThreshold, 
       useMemory, 
       liveConfig,
-      { thinkingBudget, reasoningEffort }
+      { thinkingBudget, reasoningEffort },
+      { signal: abortController.signal }
     );
   } catch (err) {
     console.error('[API] /run error:', err);
     send('error', { message: err.message });
   } finally {
+    if (activeSessionKey) {
+      activeRuns.delete(activeSessionKey);
+    }
     clearInterval(ping);
     res.end();
   }
+});
+
+// ─── Stop / Cancel Session Endpoint ──────────────────────────────────────────
+app.post(['/sessions/:id/stop', '/sessions/:id/abort', '/stop'], async (req, res) => {
+  const sessionId = req.params.id || req.body?.sessionId;
+  console.log(`[API] Stop requested for session: ${sessionId}`);
+
+  if (sessionId && activeRuns.has(sessionId)) {
+    const controller = activeRuns.get(sessionId);
+    controller.abort();
+    activeRuns.delete(sessionId);
+  }
+
+  if (sessionId) {
+    try {
+      await getPool().query(
+        `UPDATE sessions SET status = 'failed', result = 'Agent stopped by user.', updated_at = NOW() WHERE id = $1`,
+        [sessionId]
+      );
+      broadcastSessionEvent(sessionId, 'error', { message: 'Agent stopped by user.' });
+    } catch (err) {
+      console.warn('[API] Failed to update stopped session in DB:', err.message);
+    }
+  }
+
+  res.json({ success: true, message: 'Session execution stopped.' });
 });
 
 // ─── Live Session Reconnect SSE Endpoint ──────────────────────────────────────

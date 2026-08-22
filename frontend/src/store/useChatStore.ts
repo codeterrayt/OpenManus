@@ -392,6 +392,21 @@ const handleStreamEvent = (
       }
       break;
     }
+    case 'session_title_updated': {
+      const { sessionId, title } = safeData;
+      if (!title) break;
+      set(state => {
+        const updatedSessions = state.sessions.map(s => s.id === sessionId ? { ...s, title } : s);
+        const updatedActive = state.activeSession && state.activeSession.id === sessionId 
+          ? { ...state.activeSession, title } 
+          : state.activeSession;
+        return {
+          sessions: updatedSessions,
+          activeSession: updatedActive
+        };
+      });
+      break;
+    }
     case 'summarizing': {
       set({ isSummarizing: true, streamingThoughts: '📝 Summarizing conversation to save context...' });
       break;
@@ -572,8 +587,28 @@ const handleStreamEvent = (
       });
       break;
     }
+    case 'tool_stream_output': {
+      const { id, tool, liveStdout, liveStderr } = safeData;
+      const combinedOutput = (liveStdout || '') + (liveStderr ? `\n[stderr]\n${liveStderr}` : '');
+      set(state => {
+        const updatedTools = { ...state.activeToolCalls };
+        if (updatedTools[id]) {
+          updatedTools[id] = {
+            ...updatedTools[id],
+            result: combinedOutput,
+            status: 'running' as const
+          };
+        }
+        return {
+          activeToolCalls: updatedTools,
+          rightPanelTab: (tool === 'docker' || tool === 'run_code') ? 'logs' as const : state.rightPanelTab,
+          rightPanelCollapsed: false
+        };
+      });
+      break;
+    }
     case 'tool_result': {
-      const { id, tool, result, raw, error } = data;
+      const { id, tool, result, raw, error } = safeData;
       const toolCall = get().activeToolCalls[id];
       const duration = toolCall ? Date.now() - toolCall.startTime : 0;
       const durationSec = (duration / 1000).toFixed(1);
@@ -992,6 +1027,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   abortChat: () => {
+    const activeId = get().activeSessionId || get().activeSession?.id;
+    if (activeId) {
+      api.stopSession(activeId).catch(() => {});
+    } else {
+      api.stopSession().catch(() => {});
+    }
+
     if (activeAbortController) {
       activeAbortController.abort();
       activeAbortController = null;
@@ -1001,11 +1043,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
         return {
           isStreaming: false,
           streamingContent: '',
-          streamingThoughts: 'Generation aborted by user.',
+          streamingThoughts: 'Agent stopped by user.',
           activeSession: {
             ...state.activeSession,
             status: 'failed',
-            result: 'Generation aborted by user.'
+            result: 'Agent stopped by user.'
           }
         };
       }

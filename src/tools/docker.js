@@ -49,23 +49,38 @@ async function buildTar(filename, content) {
 
 /**
  * Drains a Docker multiplexed stream (as returned by container.attach / exec.start)
- * and returns { stdout, stderr } strings.
+ * and returns { stdout, stderr } strings, while streaming live chunks via onChunk.
  *
  * @param {NodeJS.ReadableStream} stream
+ * @param {Function} [onChunk] - (text: string, type: 'stdout'|'stderr') => void
  * @returns {Promise<{ stdout: string, stderr: string }>}
  */
-async function drainStream(stream) {
+async function drainStream(stream, onChunk) {
   return new Promise((resolve, reject) => {
     const stdout = [];
     const stderr = [];
 
     docker.modem.demuxStream(stream, {
-      write: (chunk) => stdout.push(chunk),
+      write: (chunk) => {
+        stdout.push(chunk);
+        if (onChunk) {
+          try {
+            onChunk(chunk.toString('utf-8'), 'stdout');
+          } catch (_) {}
+        }
+      },
     }, {
-      write: (chunk) => stderr.push(chunk),
+      write: (chunk) => {
+        stderr.push(chunk);
+        if (onChunk) {
+          try {
+            onChunk(chunk.toString('utf-8'), 'stderr');
+          } catch (_) {}
+        }
+      },
     });
 
-    stream.on('end',   () => resolve({
+    stream.on('end', () => resolve({
       stdout: Buffer.concat(stdout).toString('utf-8').trimEnd(),
       stderr: Buffer.concat(stderr).toString('utf-8').trimEnd(),
     }));
@@ -324,7 +339,16 @@ export async function ensureSandboxRunning(lang = 'python', image = null) {
  *
  * @returns {Promise<{ stdout: string, stderr: string, exitCode: number, accessUrls?: string[] }>}
  */
-export async function runInSandbox({ code, lang = 'python', image, ports = [], background = false }) {
+export async function runInSandbox({ 
+  code, 
+  lang = 'python', 
+  image, 
+  ports = [], 
+  background = false, 
+  checkIntervalSeconds = 20,
+  onOutput,
+  signal
+}) {
   // Determine filename + run command
   const isNode   = lang === 'javascript';
   const isBash   = lang === 'bash';
@@ -376,22 +400,79 @@ export async function runInSandbox({ code, lang = 'python', image, ports = [], b
     // 3. Start exec and attach streams
     const stream = await exec.start({ hijack: true, stdin: false });
 
-    // 4. Drain streams with timeout watchdog
-    let killed = false;
-    const timeoutHandle = setTimeout(async () => {
-      console.warn('[Docker] Exec execution timed out — aborting stream');
-      killed = true;
+    // Abort signal listener (User Stop Agent)
+    const abortHandler = () => {
+      console.log('[Docker] Command aborted by user signal.');
       try { stream.destroy(); } catch (_) {}
-    }, config.docker.timeoutMs);
+    };
 
-    const { stdout: rawStdout, stderr: rawStderr } = await drainStream(stream);
-    clearTimeout(timeoutHandle);
+    if (signal) {
+      if (signal.aborted) {
+        abortHandler();
+        return { stdout: '', stderr: 'Execution aborted by user.', exitCode: 130, aborted: true };
+      }
+      signal.addEventListener('abort', abortHandler, { once: true });
+    }
 
-    if (killed) {
+    let liveStdout = '';
+    let liveStderr = '';
+    const handleLiveChunk = (chunkText, streamType) => {
+      if (streamType === 'stdout') liveStdout += chunkText;
+      else liveStderr += chunkText;
+
+      if (onOutput) {
+        try {
+          onOutput({ chunk: chunkText, type: streamType, liveStdout, liveStderr });
+        } catch (_) {}
+      }
+    };
+
+    // 4. Drain streams with non-blocking check-in watchdog
+    let checkInFired = false;
+    let checkInTimer = null;
+    const checkSeconds = Math.max(5, Math.min(120, Number(checkIntervalSeconds) || 20));
+
+    const drainPromise = drainStream(stream, handleLiveChunk);
+
+    let checkInPromise = new Promise((resolve) => {
+      if (!background) {
+        checkInTimer = setTimeout(() => {
+          checkInFired = true;
+          resolve({
+            status: 'running',
+            running: true,
+            checkInElapsedSeconds: checkSeconds,
+            message: `Command is actively running (checked after ${checkSeconds}s). It may be installing dependencies, compiling, running a long process, or waiting for interactive user prompt/options selection. Check live output below to decide next action.`,
+            stdout: liveStdout.trimEnd(),
+            stderr: liveStderr.trimEnd(),
+            exitCode: null
+          });
+        }, checkSeconds * 1000);
+      }
+    });
+
+    // Race between completion and check-in timer (for foreground runs)
+    const raceResult = await Promise.race([
+      drainPromise.then(res => ({ completed: true, res })),
+      checkInPromise.then(res => ({ completed: false, res }))
+    ]);
+
+    if (checkInTimer) clearTimeout(checkInTimer);
+    if (signal) signal.removeEventListener('abort', abortHandler);
+
+    if (!raceResult.completed && checkInFired) {
+      console.log(`[Docker] Non-blocking check-in fired after ${checkSeconds}s for running command.`);
+      return raceResult.res;
+    }
+
+    const { stdout: rawStdout, stderr: rawStderr } = raceResult.res;
+
+    if (signal?.aborted) {
       return { 
-        stdout: rawStdout, 
-        stderr: `${rawStderr}\n[TimeoutError]: Execution timed out after ${config.docker.timeoutMs / 1000}s`, 
-        exitCode: -1 
+        stdout: rawStdout || liveStdout, 
+        stderr: 'Execution stopped by user.', 
+        exitCode: 130, 
+        aborted: true 
       };
     }
 

@@ -124,6 +124,7 @@ const TOOL_DEFINITIONS = [
           lang:  { type: 'string', enum: ['python', 'javascript', 'bash'], description: 'The runtime language or interpreter (python, javascript, or bash).' },
           ports: { type: 'array', items: { type: 'integer' }, description: 'List of TCP port numbers your code listens on (e.g. [3000, 8080]). These will be exposed and bound to the same port on the host so you can access them at http://localhost:<port>.' },
           background: { type: 'boolean', description: 'If true, runs this code in the background (e.g. starting a web server/service). The runner will wait for 1.5 seconds to ensure the process does not exit immediately, and then return a success status, leaving the process running in the background. Default is false.' },
+          checkIntervalSeconds: { type: 'integer', description: 'Seconds after which to check in on command status if still running (default 20s, range 5-120s). If command is taking time (compiling, installing packages, downloading weights, or asking for interactive prompts), it returns live output status so you can evaluate next actions without freezing.' },
           image: { type: 'string', description: 'Override the default Docker image base for the runtime environment (e.g. "python:3.12-slim", "node:22-slim", "postgres:16", "ubuntu:24.04"). Defaults to the standard image for the specified language if omitted.' },
         },
       },
@@ -416,7 +417,7 @@ const TOOL_DEFINITIONS = [
 
 // ─── Tool Dispatcher ─────────────────────────────────────────────────────────
 
-async function dispatchTool(toolName, args, llmClient, targetModelName, sessionId = null) {
+async function dispatchTool(toolName, args, llmClient, targetModelName, sessionId = null, onToolOutput = null, signal = null) {
   switch (toolName) {
     case 'read_file':    return JSON.stringify(await readFile(args));
     case 'write_file':   return JSON.stringify(await writeFile(args));
@@ -429,7 +430,11 @@ async function dispatchTool(toolName, args, llmClient, targetModelName, sessionI
     case 'stat_file':    return JSON.stringify(await statFile(args));
     case 'docker': {
       const { command, timeoutSec } = args;
-      const result = await runDockerCli(command, timeoutSec ? timeoutSec * 1000 : undefined);
+      const result = await runDockerCli(
+        command, 
+        timeoutSec ? timeoutSec * 1000 : undefined, 
+        { onOutput: onToolOutput ? (out) => onToolOutput({ tool: 'docker', ...out }) : null, signal }
+      );
       return JSON.stringify(result);
     }
     case 'pull_docker_image': {
@@ -437,8 +442,12 @@ async function dispatchTool(toolName, args, llmClient, targetModelName, sessionI
       return JSON.stringify(result);
     }
     case 'run_code': {
-      const { stdout, stderr, exitCode, accessUrls } = await runInSandbox(args);
-      return JSON.stringify({ exitCode, stdout, stderr, ...(accessUrls?.length ? { accessUrls, note: `Server accessible at: ${accessUrls.join(', ')}` } : {}) });
+      const result = await runInSandbox({
+        ...args,
+        onOutput: onToolOutput ? (out) => onToolOutput({ tool: 'run_code', ...out }) : null,
+        signal
+      });
+      return JSON.stringify(result);
     }
     case 'browse_web': {
       const result = await browseWeb(args);
@@ -1254,8 +1263,10 @@ export async function runAgent(
   summaryThreshold = null, 
   useMemory = false, 
   liveConfig = null,
-  thinkingOptions = {}
+  thinkingOptions = {},
+  options = {}
 ) {
+  const signal = options.signal || thinkingOptions?.signal;
   let existingHistory = [];
 
   if (sessionId) {
@@ -1449,6 +1460,13 @@ Before you call any browse_web action (except 'extract_text' or 'screenshot'), y
   let consecutiveFailures = 0;
 
   for (let step = 0; step < MAX_STEPS; step++) {
+    if (signal?.aborted) {
+      console.log(`[Agent] Agent run aborted by user for session ${sessionId}`);
+      onEvent('error', { message: 'Agent stopped by user.' });
+      await finaliseSession(sessionId, 'failed', 'Agent stopped by user.').catch(() => {});
+      return { sessionId, result: 'Agent stopped by user.' };
+    }
+
     console.log(`[Agent] Step ${step + 1}/${MAX_STEPS}`);
     onEvent('step', { step: step + 1, total: MAX_STEPS });
 
@@ -1733,7 +1751,24 @@ Before you call any browse_web action (except 'extract_text' or 'screenshot'), y
       let toolResult;
       let toolError = null;
       try {
-        toolResult = await dispatchTool(toolName, args, llmClient, targetModelName, sessionId);
+        toolResult = await dispatchTool(
+          toolName, 
+          args, 
+          llmClient, 
+          targetModelName, 
+          sessionId, 
+          (output) => {
+            onEvent('tool_stream_output', {
+              id: tc.id,
+              tool: toolName,
+              chunk: output.chunk,
+              stream: output.type,
+              liveStdout: output.liveStdout,
+              liveStderr: output.liveStderr
+            });
+          },
+          signal
+        );
       } catch (err) {
         toolError  = err.message;
         toolResult = JSON.stringify({ error: err.message });

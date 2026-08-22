@@ -17,7 +17,8 @@ const DEFAULT_TIMEOUT_MS = 120_000; // 2 minutes (pulls/builds can take a while)
  * @param {number}   [timeoutMs] - Optional timeout override in ms
  * @returns {Promise<{ stdout: string, stderr: string, exitCode: number }>}
  */
-export async function runDockerCli(command, timeoutMs = DEFAULT_TIMEOUT_MS) {
+export async function runDockerCli(command, timeoutMs = DEFAULT_TIMEOUT_MS, options = {}) {
+  const { onOutput, signal } = options;
   // Split command string into argv safely (handles quoted strings naively — enough for LLM use)
   const args = parseArgs(command);
 
@@ -32,23 +33,42 @@ export async function runDockerCli(command, timeoutMs = DEFAULT_TIMEOUT_MS) {
     const stdout = [];
     const stderr = [];
 
+    const abortHandler = () => {
+      try { proc.kill('SIGKILL'); } catch (_) {}
+    };
+
+    if (signal) {
+      if (signal.aborted) {
+        abortHandler();
+        return resolve({ stdout: '', stderr: 'Command cancelled by user.', exitCode: 130 });
+      }
+      signal.addEventListener('abort', abortHandler, { once: true });
+    }
+
     proc.stdout.on('data', (d) => {
       process.stdout.write(`[DockerCLI] ${d}`);
       stdout.push(d);
+      if (onOutput) {
+        try { onOutput(d.toString('utf-8'), 'stdout'); } catch (_) {}
+      }
     });
 
     proc.stderr.on('data', (d) => {
       process.stderr.write(`[DockerCLI] ${d}`);
       stderr.push(d);
+      if (onOutput) {
+        try { onOutput(d.toString('utf-8'), 'stderr'); } catch (_) {}
+      }
     });
 
     const timer = setTimeout(() => {
-      proc.kill('SIGKILL');
+      try { proc.kill('SIGKILL'); } catch (_) {}
       stderr.push(Buffer.from(`\n[Timeout] docker command timed out after ${timeoutMs / 1000}s\n`));
     }, timeoutMs);
 
     proc.on('close', (code) => {
       clearTimeout(timer);
+      if (signal) signal.removeEventListener('abort', abortHandler);
       resolve({
         stdout: Buffer.concat(stdout).toString('utf-8').trimEnd(),
         stderr: Buffer.concat(stderr).toString('utf-8').trimEnd(),
@@ -58,6 +78,7 @@ export async function runDockerCli(command, timeoutMs = DEFAULT_TIMEOUT_MS) {
 
     proc.on('error', (err) => {
       clearTimeout(timer);
+      if (signal) signal.removeEventListener('abort', abortHandler);
       resolve({
         stdout: '',
         stderr: `Failed to spawn docker: ${err.message}\nMake sure Docker Desktop is running and "docker" is on PATH.`,
