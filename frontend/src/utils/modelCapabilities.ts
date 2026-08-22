@@ -60,7 +60,7 @@ export function detectModelCapabilities(modelId: string): ModelThinkingCapabilit
     };
   }
 
-  // 2. OpenAI Reasoning Models (o1, o3, o3-mini, o4, etc.)
+  // 2. OpenAI o-Series Reasoning Models (o1, o3, o3-mini, o4, etc.)
   if (
     id.startsWith('o1') || 
     id.startsWith('o3') || 
@@ -68,8 +68,9 @@ export function detectModelCapabilities(modelId: string): ModelThinkingCapabilit
     id.includes('/o1') || 
     id.includes('/o3') || 
     id.includes('/o4') || 
-    id.includes('openai/o') ||
-    id.includes('gpt-5')
+    id.includes('openai/o1') ||
+    id.includes('openai/o3') ||
+    id.includes('openai/o4')
   ) {
     return {
       supportsThinking: true,

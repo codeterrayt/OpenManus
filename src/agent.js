@@ -1544,7 +1544,17 @@ Before you call any browse_web action (except 'extract_text' or 'screenshot'), y
     const { thinkingBudget, reasoningEffort } = thinkingOptions || {};
     const lowerModel = (resolvedModel || '').toLowerCase();
     const isClaudeModel = lowerModel.includes('claude') || lowerModel.includes('anthropic');
-    const isOpenAIReasoning = lowerModel.startsWith('o1') || lowerModel.startsWith('o3') || lowerModel.startsWith('o4') || lowerModel.includes('/o1') || lowerModel.includes('/o3') || lowerModel.includes('/o4') || lowerModel.includes('gpt-5');
+    const isOpenAIReasoning = (
+      lowerModel.startsWith('o1') || 
+      lowerModel.startsWith('o3') || 
+      lowerModel.startsWith('o4') || 
+      lowerModel.includes('/o1') || 
+      lowerModel.includes('/o3') || 
+      lowerModel.includes('/o4') || 
+      lowerModel.includes('openai/o1') || 
+      lowerModel.includes('openai/o3') || 
+      lowerModel.includes('openai/o4')
+    );
     const isDeepSeekReasoning = lowerModel.includes('r1') || lowerModel.includes('deepseek-reasoner') || lowerModel.includes('qwq');
 
     const sanitizedMessages = sanitizeHistory(messages);
@@ -1574,7 +1584,7 @@ Before you call any browse_web action (except 'extract_text' or 'screenshot'), y
         };
       }
     } 
-    // OpenAI Reasoning Effort (low, medium, high)
+    // OpenAI Reasoning Effort (low, medium, high) - ONLY for o-series reasoning models
     else if (isOpenAIReasoning && reasoningEffort) {
       completionParams.reasoning_effort = reasoningEffort;
     }
@@ -1605,18 +1615,44 @@ Before you call any browse_web action (except 'extract_text' or 'screenshot'), y
     try {
       stream = await llmClient.chat.completions.create(completionParams);
     } catch (err) {
-      let msg = err.message ?? String(err);
-      if (msg.includes('ECONNREFUSED') || msg.includes('fetch failed')) {
-        msg = `Cannot connect to Ollama at ${config.ollama.baseURL}.\nMake sure Ollama is running:  ollama serve`;
-      } else if (msg.includes('model') && (msg.includes('not found') || msg.includes('pull'))) {
-        msg = `Model "${config.ollama.model}" not found in Ollama.\nPull it first:  ollama pull ${config.ollama.model}\nAvailable:  ollama ls`;
-      } else if (msg.includes('404')) {
-        msg = `Ollama returned 404 — model "${config.ollama.model}" is not loaded.\nTry:  ollama run ${config.ollama.model}`;
+      const errMsg = err.message ?? String(err);
+      // If provider/model doesn't support reasoning_effort alongside function tools, strip it and retry immediately
+      if (
+        (errMsg.includes('reasoning_effort') || errMsg.includes('thinking') || errMsg.includes('extra_body') || errMsg.includes('400')) &&
+        (completionParams.reasoning_effort !== undefined || completionParams.thinking !== undefined || completionParams.extra_body !== undefined)
+      ) {
+        console.warn(`[Agent] Provider rejected reasoning parameters (${errMsg}). Auto-retrying with standard parameters...`);
+        delete completionParams.reasoning_effort;
+        delete completionParams.thinking;
+        delete completionParams.max_thinking_tokens;
+        if (completionParams.extra_body) {
+          delete completionParams.extra_body.reasoning_tokens;
+          delete completionParams.extra_body.thinking;
+          if (Object.keys(completionParams.extra_body).length === 0) {
+            delete completionParams.extra_body;
+          }
+        }
+        try {
+          stream = await llmClient.chat.completions.create(completionParams);
+        } catch (retryErr) {
+          err = retryErr;
+        }
       }
-      console.error('[Agent] LLM call failed:', msg);
-      await finaliseSession(sessionId, 'failed', msg).catch(() => {});
-      onEvent('error', { message: msg });
-      return { sessionId, result: msg };
+
+      if (!stream) {
+        let msg = err.message ?? String(err);
+        if (msg.includes('ECONNREFUSED') || msg.includes('fetch failed')) {
+          msg = `Cannot connect to Ollama at ${config.ollama.baseURL}.\nMake sure Ollama is running:  ollama serve`;
+        } else if (msg.includes('model') && (msg.includes('not found') || msg.includes('pull'))) {
+          msg = `Model "${config.ollama.model}" not found in Ollama.\nPull it first:  ollama pull ${config.ollama.model}\nAvailable:  ollama ls`;
+        } else if (msg.includes('404')) {
+          msg = `Ollama returned 404 — model "${config.ollama.model}" is not loaded.\nTry:  ollama run ${config.ollama.model}`;
+        }
+        console.error('[Agent] LLM call failed:', msg);
+        await finaliseSession(sessionId, 'failed', msg).catch(() => {});
+        onEvent('error', { message: msg });
+        return { sessionId, result: msg };
+      }
     }
 
     // ── Consume the stream ────────────────────────────────────────────────────
