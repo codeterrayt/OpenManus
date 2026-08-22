@@ -60,7 +60,7 @@ function sanitizeId(str) {
 const INVALID_ENTITY_NAMES = new Set([
   'it', 'this', 'that', 'something', 'anything', 'code', 'file', 'files', 'error',
   'thing', 'things', 'line', 'lines', 'test', 'item', 'value', 'the', 'an', 'a',
-  'to', 'for', 'of', 'in', 'on', 'at', 'with', 'from', 'user', 'me', 'we', 'they',
+  'to', 'for', 'of', 'in', 'on', 'at', 'with', 'from', 'me', 'we', 'they',
   'option', 'options', 'setting', 'settings', 'null', 'undefined', 'true', 'false'
 ]);
 
@@ -83,10 +83,20 @@ export function extractTriples(text) {
 
   for (const line of lines) {
     const trimmed = line.trim();
-    if (!trimmed || trimmed.length < 6) continue;
+    if (!trimmed || trimmed.length < 5) continue;
+
+    // Pattern: User name / identity: User's preferred name is X, User's name is X, My name is X, call me X
+    let nameMatch = trimmed.match(/(?:user(?:'s)?\s+(?:preferred\s+name|name)|user\s+is\s+(?:named|called)|my\s+name\s+is|call\s+me)\s+(?:is\s+)?([a-zA-Z0-9_.-]+)/i);
+    if (nameMatch && isValidEntityName(nameMatch[1])) {
+      triples.push({
+        source: { name: 'User', label: 'User' },
+        relation: 'NAMED',
+        target: { name: nameMatch[1].trim(), label: 'Identity' }
+      });
+    }
 
     // Pattern: User prefers / likes / wants X
-    let m = trimmed.match(/(?:user|developer)\s+(?:prefers?|likes?|uses?|wants?|loves?)\s+([a-zA-Z0-9_.-]+)/i);
+    let m = trimmed.match(/(?:user|developer)\s+(?:prefers?|preferred|likes?|uses?|wants?|loves?)\s+([a-zA-Z0-9_.-]+)/i);
     if (m && isValidEntityName(m[1])) {
       triples.push({
         source: { name: 'User', label: 'User' },
@@ -522,11 +532,14 @@ export function isMeaningfulMemory(content) {
     if (pattern.test(trimmed)) return false;
   }
 
-  // Meaningful signals (explicit preferences, system configs, technical decisions, milestone lessons)
+  // Meaningful signals (user profile/identity, preferences, system configs, technical decisions, milestone lessons)
   const MEANINGFUL_SIGNALS = [
-    /\b(prefers?|wants?|likes?|always|never|requires?|uses?|built\s+with|configured|standard|convention)\b/i,
-    /\b(architecture|pattern|framework|database|stack|api|key|token|endpoint|schema|model|docker|node|react|postgres|neo4j)\b/i,
-    /\b(fixed|solved|resolved|milestone|implemented|created|deployed|bug|workaround|lesson|episode)\b/i
+    // User profile, identity, names, role, preferences
+    /\b(name|named|alex|call\s+me|identity|user's?|my\s+name|prefers?|preferred|preferences?|likes?|wants?|always|never|requires?|uses?|using|built\s+with|configured|standard|convention|timezone|location|role|developer|engineer|author|profile)\b/i,
+    // Architectural, stack, infrastructure, database, libraries
+    /\b(architecture|pattern|framework|database|stack|api|key|token|endpoint|schema|model|docker|node|react|postgres|neo4j|redis|tailwind|css|html|python|javascript|typescript)\b/i,
+    // Solutions, milestone lessons, workarounds
+    /\b(fixed|solved|resolved|milestone|implemented|created|deployed|bug|workaround|lesson|episode|solution|instructions?)\b/i
   ];
 
   return MEANINGFUL_SIGNALS.some(regex => regex.test(trimmed));
