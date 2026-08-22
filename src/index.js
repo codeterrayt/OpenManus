@@ -24,7 +24,8 @@ import {
   getGraphData, 
   queryGraphRelations, 
   crystallizeSessionEpisode,
-  deleteGraphNode
+  deleteGraphNode,
+  cleanupNoiseGraphNodes
 } from './memory/mem0.js';
 import envRouter from './routes/env.js';
 
@@ -1154,6 +1155,9 @@ browserEvents.on('loaded', () => {
 server.listen(config.api.port, async () => {
   await initDb().catch((err) => {
     console.error('[DB] initDb failed on startup:', err.message);
+  });
+  await cleanupNoiseGraphNodes().catch((err) => {
+    console.warn('[Mem0] Initial graph cleanup warning:', err.message);
   });
   console.log(`
   ╔══════════════════════════════════════════════════╗

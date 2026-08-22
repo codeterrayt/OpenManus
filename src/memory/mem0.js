@@ -72,20 +72,80 @@ const INVALID_ENTITY_NAMES = new Set([
   'it', 'this', 'that', 'something', 'anything', 'code', 'file', 'files', 'error',
   'thing', 'things', 'line', 'lines', 'test', 'item', 'value', 'the', 'an', 'a',
   'to', 'for', 'of', 'in', 'on', 'at', 'with', 'from', 'me', 'we', 'they',
-  'option', 'options', 'setting', 'settings', 'null', 'undefined', 'true', 'false'
+  'option', 'options', 'setting', 'settings', 'null', 'undefined', 'true', 'false',
+  'information', 'details', 'check', 'answer', 'store', 'saved', 'sure'
 ]);
 
 function isValidEntityName(name) {
   if (!name || typeof name !== 'string') return false;
   const clean = name.trim().toLowerCase();
-  if (clean.length < 2 || clean.length > 50) return false;
+  if (clean.length < 2 || clean.length > 40) return false;
   if (INVALID_ENTITY_NAMES.has(clean)) return false;
   if (/^\d+$/.test(clean)) return false;
+  if (clean.includes('\n') || clean.includes('  ')) return false;
   return true;
 }
 
 /**
- * Extracts entity-relation-entity triples from text using semantic patterns with strict validity filters
+ * Domain & Topic Taxonomy — maps entities to their canonical category hub nodes
+ * so related entities automatically connect to the same topic hub in the knowledge graph.
+ */
+export const ENTITY_CATEGORIES = {
+  // Databases
+  postgresql: { name: 'Database', label: 'Domain' },
+  postgres: { name: 'Database', label: 'Domain' },
+  neo4j: { name: 'Database', label: 'Domain' },
+  redis: { name: 'Database', label: 'Domain' },
+  mongodb: { name: 'Database', label: 'Domain' },
+  mysql: { name: 'Database', label: 'Domain' },
+  sqlite: { name: 'Database', label: 'Domain' },
+
+  // Frontend
+  react: { name: 'Frontend', label: 'Domain' },
+  vue: { name: 'Frontend', label: 'Domain' },
+  tailwind: { name: 'Frontend', label: 'Domain' },
+  tailwindcss: { name: 'Frontend', label: 'Domain' },
+  vite: { name: 'Frontend', label: 'Domain' },
+  html: { name: 'Frontend', label: 'Domain' },
+  css: { name: 'Frontend', label: 'Domain' },
+
+  // Backend
+  nodejs: { name: 'Backend', label: 'Domain' },
+  node: { name: 'Backend', label: 'Domain' },
+  express: { name: 'Backend', label: 'Domain' },
+  fastapi: { name: 'Backend', label: 'Domain' },
+  django: { name: 'Backend', label: 'Domain' },
+
+  // Languages
+  typescript: { name: 'ProgrammingLanguage', label: 'Domain' },
+  javascript: { name: 'ProgrammingLanguage', label: 'Domain' },
+  python: { name: 'ProgrammingLanguage', label: 'Domain' },
+  rust: { name: 'ProgrammingLanguage', label: 'Domain' },
+  golang: { name: 'ProgrammingLanguage', label: 'Domain' },
+
+  // Security
+  ethicalhacking: { name: 'Security', label: 'Domain' },
+  ethical_hacking: { name: 'Security', label: 'Domain' },
+  cybersecurity: { name: 'Security', label: 'Domain' },
+  infosec: { name: 'Security', label: 'Domain' },
+  pentesting: { name: 'Security', label: 'Domain' },
+
+  // DevOps & Cloud
+  docker: { name: 'DevOps', label: 'Domain' },
+  kubernetes: { name: 'DevOps', label: 'Domain' },
+  aws: { name: 'Cloud', label: 'Domain' },
+
+  // Locations
+  taiwan: { name: 'Location', label: 'Location' },
+  japan: { name: 'Location', label: 'Location' },
+  tokyo: { name: 'Location', label: 'Location' },
+  usa: { name: 'Location', label: 'Location' },
+  india: { name: 'Location', label: 'Location' },
+  germany: { name: 'Location', label: 'Location' }
+};
+
+/**
+ * Extracts high-signal semantic entity-relation triples linked to canonical hubs (User, Project, Topics).
  */
 export function extractTriples(text) {
   if (!text || typeof text !== 'string') return [];
@@ -94,20 +154,60 @@ export function extractTriples(text) {
 
   for (const line of lines) {
     const trimmed = line.trim();
-    if (!trimmed || trimmed.length < 5) continue;
+    if (!trimmed || trimmed.length < 3) continue;
 
-    // Pattern: User name / identity: User's preferred name is X, User's name is X, My name is X, call me X
-    let nameMatch = trimmed.match(/(?:user(?:'s)?\s+(?:preferred\s+name|name)|user\s+is\s+(?:named|called)|my\s+name\s+is|call\s+me)\s+(?:is\s+)?([a-zA-Z0-9_.-]+)/i);
-    if (nameMatch && isValidEntityName(nameMatch[1])) {
+    // 1. User Name / Identity: "User's preferred name is X", "My name is X", "1. Alexandar"
+    let m = trimmed.match(/(?:user(?:'s)?\s+(?:preferred\s+name|name)|user\s+is\s+(?:named|called)|my\s+name\s+is|call\s+me)\s+(?:is\s+)?([a-zA-Z0-9_.-]+)/i);
+    if (m && isValidEntityName(m[1])) {
       triples.push({
         source: { name: 'User', label: 'User' },
         relation: 'NAMED',
-        target: { name: nameMatch[1].trim(), label: 'Identity' }
+        target: { name: m[1].trim(), label: 'Identity' }
       });
     }
 
-    // Pattern: User prefers / likes / wants X
-    let m = trimmed.match(/(?:user|developer)\s+(?:prefers?|preferred|likes?|uses?|wants?|loves?)\s+([a-zA-Z0-9_.-]+)/i);
+    // 2. User Location: "User is in Taiwan", "based in Tokyo", "lives in Taiwan", "Location: Taiwan", "2. Taiwan"
+    m = trimmed.match(/(?:user\s+(?:lives\s+in|based\s+in|located\s+in|from)|location\s*[:=]|lives\s+in|from)\s+([a-zA-Z0-9_.-]+)/i);
+    if (!m && /\b(taiwan|japan|tokyo|usa|india|germany|uk|canada)\b/i.test(trimmed)) {
+      const locMatch = trimmed.match(/\b(taiwan|japan|tokyo|usa|india|germany|uk|canada)\b/i);
+      if (locMatch) {
+        triples.push({
+          source: { name: 'User', label: 'User' },
+          relation: 'LOCATED_IN',
+          target: { name: locMatch[1].charAt(0).toUpperCase() + locMatch[1].slice(1).toLowerCase(), label: 'Location' }
+        });
+      }
+    } else if (m && isValidEntityName(m[1])) {
+      triples.push({
+        source: { name: 'User', label: 'User' },
+        relation: 'LOCATED_IN',
+        target: { name: m[1].trim(), label: 'Location' }
+      });
+    }
+
+    // 3. User Interests & Skills: "interested in Ethical Hacking", "skilled in Python", "field is Security", "3. Ethical Hacking"
+    m = trimmed.match(/(?:user\s+(?:interested\s+in|studies|works\s+on|skilled\s+in)|interest\s*[:=]|field\s*[:=]|hobby\s*[:=])\s+([a-zA-Z0-9_.-]+(?:\s+[a-zA-Z0-9_.-]+)?)/i);
+    if (!m && /\b(ethical\s+hacking|cybersecurity|machine\s+learning|web\s+development|data\s+science)\b/i.test(trimmed)) {
+      const skillMatch = trimmed.match(/\b(ethical\s+hacking|cybersecurity|machine\s+learning|web\s+development|data\s+science)\b/i);
+      if (skillMatch) {
+        const cleanSkill = skillMatch[1].split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join('');
+        triples.push({
+          source: { name: 'User', label: 'User' },
+          relation: 'INTERESTED_IN',
+          target: { name: cleanSkill, label: 'Interest' }
+        });
+      }
+    } else if (m && isValidEntityName(m[1])) {
+      const cleanSkill = m[1].trim().split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join('');
+      triples.push({
+        source: { name: 'User', label: 'User' },
+        relation: 'INTERESTED_IN',
+        target: { name: cleanSkill, label: 'Interest' }
+      });
+    }
+
+    // 4. User Preferences: "User prefers DarkMode", "likes TypeScript"
+    m = trimmed.match(/(?:user|developer)\s+(?:prefers?|preferred|likes?|uses?|wants?|loves?)\s+([a-zA-Z0-9_.-]+)/i);
     if (m && isValidEntityName(m[1])) {
       triples.push({
         source: { name: 'User', label: 'User' },
@@ -116,7 +216,7 @@ export function extractTriples(text) {
       });
     }
 
-    // Pattern: Project / System uses / requires / built with X
+    // 5. Project Technology & Architecture: "Project uses PostgreSQL and Neo4j"
     m = trimmed.match(/(?:project|system|app|service|backend|frontend)\s+(?:uses?|requires?|built with|runs on)\s+([a-zA-Z0-9_.-]+)/i);
     if (m && isValidEntityName(m[1])) {
       triples.push({
@@ -126,32 +226,37 @@ export function extractTriples(text) {
       });
     }
 
-    // Pattern: Service / Database configured with / uses X
-    m = trimmed.match(/(?:database|db|postgres|neo4j|redis|docker)\s+(?:uses?|configured with|listens on)\s+([a-zA-Z0-9_.-]+)/i);
-    if (m && isValidEntityName(m[1])) {
-      triples.push({
-        source: { name: 'Infrastructure', label: 'Service' },
-        relation: 'CONFIGURED_WITH',
-        target: { name: m[1].trim(), label: 'Technology' }
-      });
-    }
-
-    // Pattern: X depends on Y
-    m = trimmed.match(/([a-zA-Z0-9_.-]+)\s+(?:depends on|relies on)\s+([a-zA-Z0-9_.-]+)/i);
-    if (m && isValidEntityName(m[1]) && isValidEntityName(m[2])) {
-      triples.push({
-        source: { name: m[1].trim(), label: 'Component' },
-        relation: 'DEPENDS_ON',
-        target: { name: m[2].trim(), label: 'Dependency' }
-      });
+    // Direct multi-tech matches (e.g. "PostgreSQL and Neo4j")
+    const techMatches = trimmed.match(/\b(postgresql|postgres|neo4j|redis|docker|react|tailwindcss|express|nodejs|fastapi|typescript|python)\b/gi);
+    if (techMatches && techMatches.length > 0) {
+      for (const tech of techMatches) {
+        const canonical = tech.charAt(0).toUpperCase() + tech.slice(1).toLowerCase();
+        triples.push({
+          source: { name: 'Project', label: 'Project' },
+          relation: 'USES',
+          target: { name: canonical, label: 'Technology' }
+        });
+      }
     }
   }
 
-  return triples;
+  // Deduplicate triples
+  const seen = new Set();
+  const uniqueTriples = [];
+  for (const t of triples) {
+    const key = `${sanitizeId(t.source.name)}_${t.relation}_${sanitizeId(t.target.name)}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniqueTriples.push(t);
+    }
+  }
+
+  return uniqueTriples;
 }
 
 /**
  * Upserts graph triples into Neo4j (if active) and PostgreSQL Graph fallback.
+ * Automatically adds category topic hub edges so related entities cluster around shared concepts.
  */
 export async function saveTriples(triples) {
   if (!Array.isArray(triples) || triples.length === 0) return;
@@ -162,9 +267,23 @@ export async function saveTriples(triples) {
   );
   if (validTriples.length === 0) return;
 
+  // Add automatic taxonomy category links
+  const allTriples = [...validTriples];
+  for (const t of validTriples) {
+    const targetKey = sanitizeId(t.target.name);
+    if (ENTITY_CATEGORIES[targetKey]) {
+      const cat = ENTITY_CATEGORIES[targetKey];
+      allTriples.push({
+        source: { name: t.target.name, label: t.target.label || 'Entity' },
+        relation: 'CATEGORY',
+        target: { name: cat.name, label: cat.label }
+      });
+    }
+  }
+
   const neo4jDriver = await getNeo4jDriver().catch(() => null);
 
-  for (const t of validTriples) {
+  for (const t of allTriples) {
     const sName = String(t.source.name || 'Entity').trim();
     const sLabel = String(t.source.label || 'Entity').trim();
     const sId = sanitizeId(sName);
@@ -218,6 +337,42 @@ export async function saveTriples(triples) {
         await session.close().catch(() => {});
       }
     }
+  }
+}
+
+/**
+ * Purges raw task sentences and noise nodes from PostgreSQL and Neo4j.
+ */
+export async function cleanupNoiseGraphNodes() {
+  try {
+    // 1. Clean PostgreSQL
+    await query(`DELETE FROM memory_edges WHERE relation_type = 'RESOLVED_WITH' OR source_id LIKE '% %' OR target_id LIKE '% %' OR length(source_id) > 35 OR length(target_id) > 35`);
+    await query(`DELETE FROM memory_nodes WHERE label IN ('Task', 'Lesson') OR id LIKE '% %' OR id LIKE '%\\n%' OR length(id) > 35`);
+    
+    // Remove isolated nodes without edges except core hubs
+    await query(`
+      DELETE FROM memory_nodes 
+      WHERE id NOT IN ('user', 'project')
+      AND id NOT IN (SELECT source_id FROM memory_edges UNION SELECT target_id FROM memory_edges)
+    `);
+
+    // 2. Clean Neo4j
+    const neo4jDriver = await getNeo4jDriver().catch(() => null);
+    if (neo4jDriver) {
+      const session = neo4jDriver.session();
+      try {
+        await session.run(`MATCH ()-[r:RESOLVED_WITH]->() DELETE r`);
+        await session.run(`MATCH (n:Entity) WHERE n.label IN ['Task', 'Lesson'] OR size(n.id) > 35 OR n.id CONTAINS ' ' OR n.id CONTAINS '\n' DETACH DELETE n`);
+        await session.run(`MATCH (n:Entity) WHERE NOT (n)--() AND NOT n.id IN ['user', 'project'] DETACH DELETE n`);
+      } catch (nErr) {
+        console.warn('[Mem0] Neo4j cleanup error:', nErr.message);
+      } finally {
+        await session.close().catch(() => {});
+      }
+    }
+    console.log('[Mem0] Cleaned up noise graph nodes and isolated 2-node task islands.');
+  } catch (err) {
+    console.warn('[Mem0] Graph cleanup error:', err.message);
   }
 }
 
@@ -438,19 +593,15 @@ export async function addFactualMemory(content, metadata = {}, sessionId = null,
 
 /**
  * Adds an episodic memory (past task outcomes, solutions, key lessons).
+ * Note: Does NOT pollute the Knowledge Graph with raw conversational task sentences.
  */
 export async function addEpisodicMemory(goal, outcome, keyActions = [], lessonsLearned = '', sessionId = null, metadata = {}) {
   const cleanGoal = (goal || '').trim();
   const cleanSessionId = sanitizeSessionId(sessionId);
   const content = `Task Episode: "${cleanGoal}" | Outcome: ${outcome.toUpperCase()}\nActions: ${Array.isArray(keyActions) ? keyActions.join(', ') : keyActions}\nLessons Learned: ${lessonsLearned}`;
 
+  // Only extract high-signal domain entity triples (if any exist in goal/lesson)
   const triples = extractTriples(content);
-  triples.push({
-    source: { name: cleanGoal.slice(0, 40), label: 'Task' },
-    relation: outcome === 'success' ? 'RESOLVED_WITH' : 'FAILED_AT',
-    target: { name: (lessonsLearned || 'Execution').slice(0, 40), label: 'Lesson' }
-  });
-
   const entities = Array.from(new Set(triples.flatMap(t => [t.source.name, t.target.name])));
 
   const epRows = await query(
@@ -467,7 +618,9 @@ export async function addEpisodicMemory(goal, outcome, keyActions = [], lessonsL
     [content, JSON.stringify(entities), JSON.stringify({ ...metadata, episode_id: epRows[0]?.id }), cleanSessionId]
   );
 
-  await saveTriples(triples).catch(e => console.warn('[Mem0] Episode triple save error:', e.message));
+  if (triples.length > 0) {
+    await saveTriples(triples).catch(e => console.warn('[Mem0] Episode triple save error:', e.message));
+  }
 
   return memRows[0];
 }
@@ -625,6 +778,12 @@ export async function crystallizeSessionEpisode(sessionId, goal, history = [], r
     }
   }
 
+  const SUBSTANTIVE_TOOLS = new Set([
+    'bash', 'python_interpreter', 'write_to_file', 'replace_file_content',
+    'file_creator', 'file_editor', 'execute_code', 'create_file', 'edit_file',
+    'save_skill', 'browse_web'
+  ]);
+
   try {
     const outcome = status === 'done' ? 'success' : 'failure';
     const keyActions = [];
@@ -640,9 +799,10 @@ export async function crystallizeSessionEpisode(sessionId, goal, history = [], r
       }
     }
 
-    // If no actions and no meaningful result, skip polluting memory
-    if (keyActions.length === 0 && !isMeaningfulMemory(cleanGoal)) {
-      console.log(`[Mem0] Skipped crystallization for non-actionable query: "${cleanGoal}"`);
+    // Only crystallize if substantive engineering actions were executed
+    const hasSubstantiveAction = keyActions.some(a => SUBSTANTIVE_TOOLS.has(a));
+    if (!hasSubstantiveAction) {
+      console.log(`[Mem0] Skipped crystallization for conversational/read-only session: "${cleanGoal}"`);
       return null;
     }
 
