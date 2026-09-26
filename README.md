@@ -3,17 +3,21 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A5%2020.0.0-green.svg)](https://nodejs.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-%E2%89%A5%2014-blue.svg)](https://www.postgresql.org/)
+[![Neo4j](https://img.shields.io/badge/Neo4j-Graph%20Database-008cc1.svg)](https://neo4j.com/)
 [![Docker](https://img.shields.io/badge/Docker-Enabled-blue.svg)](https://www.docker.com/)
-[![React](https://img.shields.io/badge/React-18%2F19-cyan.svg)](https://react.dev/)
+[![React](https://img.shields.io/badge/React-19-cyan.svg)](https://react.dev/)
+[![Monaco Editor](https://img.shields.io/badge/Monaco_Editor-VS_Code_Web-007acc.svg)](https://microsoft.github.io/monaco-editor/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.0-blueviolet.svg)](https://tailwindcss.com/)
 
-OpenManus is an open-source, local-first autonomous AI action engine designed to orchestrate complex reasoning, coding, and web-browsing workflows. Inspired by the capabilities of next-generation AI assistants like Manus, OpenManus allows developers and power users to deploy agentic loops directly on their machines. The engine handles long-running goals by writing code, executing scripts in an isolated sandbox, and navigating the web, while presenting a real-time interactive remote browser screen. This stream enables users to observe the agent's progress and actively guide the session by interacting with the browser interface in real time.
+OpenManus is an open-source, local-first autonomous AI action engine designed to orchestrate complex reasoning, live coding, memory distillation, and web-browsing workflows. Inspired by next-generation agentic systems, OpenManus empowers developers and power users to deploy multi-role agent loops directly on their local machines. 
+
+The platform pairs long-running autonomous execution in an isolated Docker sandbox with real-time interactive browser streaming, an integrated VS Code Web (Monaco Editor) live code stream, a Mem0 multi-tier Knowledge Graph engine (backed by Neo4j and PostgreSQL), dynamic reasoning controls, and an executive dark obsidian UI.
 
 ---
 
 ## 📽️ Demo & Screenshots
 
-*(Insert GIF demonstrating live browser control, terminal execution, and settings toggling here)*
+*(Insert GIF demonstrating live browser control, Monaco code streaming, Knowledge Graph visualization, and settings toggling here)*
 
 <!-- GIF PLACEHOLDER -->
 ```
@@ -24,135 +28,189 @@ OpenManus is an open-source, local-first autonomous AI action engine designed to
 
 ## 🌟 Capabilities & Features
 
-Select any section below to learn how it works under the hood:
+Select any section below to learn how each subsystem operates:
 
 <details>
-<summary><b>🎭 3 Specialized Agent Roles</b></summary>
+<summary><b>🧠 Mem0 Multi-Tier Memory & Knowledge Graph</b></summary>
 
-OpenManus optimizes performance by offering three specialized agent personas that can be selected directly in the chat panel depending on the task:
-- **`OpenManus` (Autonomous Orchestrator):** The default general-purpose planner that handles standard tasks, tool selection, and reasoning.
-- **`CoderAgent` (Software Developer):** Focuses on code generation, script execution, environment resolution, and math/data tasks inside the Docker sandbox.
-- **`BrowserAgent` (Web Researcher):** Optimizes search, web browsing, scraping, and remote interaction.
+OpenManus integrates an enterprise-grade memory engine combining relational storage and graph structures:
+- **4-Tier Architecture:** Stores **Factual** (user preferences, system configurations, facts), **Episodic** (past execution steps, tool results), **Context** (summaries), and **Knowledge Graph** relations.
+- **Dual Graph Backend:** Native **Neo4j 5** integration (via Bolt protocol and APOC plugins) with an automatic PostgreSQL fallback if Neo4j is offline.
+- **Interactive Knowledge Graph Canvas:** Visual graph explorer directly in Settings with physics-based layout, draggable nodes, relationship labels, and one-click node deletion.
+- **Canonical Hub Clustering:** Eliminates 2-node clutter by anchoring personal attributes to a canonical `User` hub and clustering topics around shared category nodes.
+- **Tokenized Memory Search & Global Prompt Injection:** Automatically extracts relevant memories using tokenized similarity search and injects them into the agent's prompt across sessions.
+</details>
+
+<details>
+<summary><b>💻 VS Code Web (Monaco Editor) & Live Code Streaming</b></summary>
+
+Observe the agent's code creation in real time without refreshing or leaving the chat:
+- **Claude-Style Live Streaming:** Watches file creation and edits as they happen, streaming syntax-highlighted code character-by-character into an embedded Monaco editor.
+- **Automatic Panel Expansion:** Automatically opens and expands the editor workspace whenever the agent invokes file write or modify tools.
+- **Multi-Language Support:** Rich syntax highlighting and formatting for TypeScript, JavaScript, Python, HTML/CSS, JSON, Markdown, Shell scripts, and SQL.
+- **Interactive Tools:** Includes minimap toggle, word wrap, copy-to-clipboard, full-screen expansion, file downloads, and clickable chat file chips that navigate directly to the file.
+</details>
+
+<details>
+<summary><b>⚡ Dynamic Thinking & Reasoning Controls</b></summary>
+
+Take full control over reasoning models:
+- **Dual Parameter Support:** Configure **Anthropic Claude Thinking Budgets** (1K, 2K, 4K, 8K, 16K, 32K, 64K, or custom) and **OpenAI Reasoning Effort** (`low`, `medium`, `high`).
+- **Capability Auto-Detection:** Dynamically senses whether the active model supports token-budgeted or effort-based reasoning.
+- **Auto-Recovery:** Automatically recovers and strips unsupported reasoning arguments when routing to models or providers that reject them.
+</details>
+
+<details>
+<summary><b>🌐 Custom AI Providers & Universal OpenAI-Compatible Routing</b></summary>
+
+Connect any LLM provider effortlessly:
+- **Custom Provider Manager:** Add, edit, test, and toggle third-party providers in the Settings modal (vLLM, LM Studio, OpenRouter, Together AI, Groq, Ollama, OpenAI).
+- **Dynamic Model Discovery:** Automatically queries `/v1/models` endpoints to discover available models in real time.
+- **Hybrid Storage:** Store credentials locally in `.env` or persistently in the database (`env_settings`) with masked secret protection.
+- **Claude-Desktop Compatible Headers:** Normalizes base URLs and injects compatible User-Agent headers to ensure seamless connection to proprietary endpoints.
+</details>
+
+<details>
+<summary><b>🔄 Context History Strategies & Compacting Controls</b></summary>
+
+Prevent context-window overflow and maintain pinpoint agent accuracy:
+- **3 Context Strategies:** Select between **Rolling Summary**, **Sliding Window**, or **Full History**.
+- **Turn Depth Control:** Define the exact number of recent conversation turns (`keepRecentTurns`) to preserve verbatim.
+- **Token Compression Threshold:** Configure token volume limits (10k–120k tokens) to automatically trigger background compaction.
+- **On-Demand Compaction:** Manually compress active session history at any time with a single click.
+</details>
+
+<details>
+<summary><b>🎨 Executive Dark Obsidian Interface (Taste Skill Anti-Slop Design)</b></summary>
+
+A distraction-free interface engineered for deep work:
+- **Monochromatic Obsidian Palette:** Replaces generic rainbow gradients with purposeful dark obsidian surfaces (`#0E121B`, `#0A0C13`).
+- **Master-Detail Settings Modal:** Categorized settings with reactive controls across General, Models, Memory & Graph, and Environment.
+- **Per-Response Analytics:** Live tracking of input/output token volume, execution duration, step counts, and cost estimates.
+- **Dynamic Tool Indicators:** Visual feedback for active agent actions (Reading, Writing, Sandbox Execution, Web Browsing).
+- **Execution Watchdog & Instant Stop:** Real-time watchdog monitoring agent runs with an instant-abort Stop button.
+- **Session Persistence & SSE Reconnect:** Reconnecting EventSource client ensures zero dropped sessions across page reloads.
 </details>
 
 <details>
 <summary><b>🔒 Persistent Docker Sandbox & Docker-in-Docker</b></summary>
 
-All code execution (Python, Node.js, Shell scripts) happens inside a persistent, secure Docker sandbox container:
-- **In-Memory Tar Streams:** Pushes scripts and assets into the sandbox via tar stream archives to avoid local file volume mount issues.
-- **Persistent Runtimes:** The container remains running during the session to preserve installed packages (e.g. if the agent runs `pip install pandas` in step 1, it remains available in subsequent steps).
-- **Docker-in-Docker:** Mounts the host's `/var/run/docker.sock` to allow the agent to run and manage its own nested Docker containers for complex multi-container workflows.
-- **Resource Constraints:** Enforces a 512MB RAM cap, 80% CPU limit, and a PID limit of 128 to prevent runaway processes.
+All code execution (Python, Node.js, Shell scripts) runs inside a persistent, secure Docker sandbox container:
+- **In-Memory Tar Streams:** Pushes scripts and assets into the sandbox via tar stream archives to bypass host filesystem volume limitations.
+- **Persistent Runtimes:** The container remains running throughout the session to retain installed dependencies (`pip install`, `npm install`).
+- **Docker-in-Docker:** Mounts the host's `/var/run/docker.sock` to enable multi-container builds and nested service orchestration.
+- **Resource Constraints:** Enforces a 512MB RAM cap, 80% CPU throttle, and a PID limit of 128 to block runaway processes.
 </details>
 
 <details>
-<summary><b>💻 Coding, File Creation & Live Hosted URLs</b></summary>
+<summary><b>🎭 3 Specialized Agent Roles</b></summary>
 
-The agent has full read/write access to the workspace directory to build complete projects:
-- **Workspace File Management:** Reads, writes, modifies, and deletes files directly within the local workspace.
-- **Live Local Servers:** The agent can spin up development servers (like React Vite, Express, or Python Flask) inside the environment.
-- **Link Recognition:** If a local server is started, it is automatically exposed on `localhost` and rendered as a live, clickable host URL in the chat and execution panel.
+Optimize execution efficiency by picking specialized agent personas:
+- **`OpenManus` (Autonomous Orchestrator):** The default general-purpose planner handling standard tasks, multi-step orchestration, and tool selection.
+- **`CoderAgent` (Software Developer):** Focused on code synthesis, script execution, dependency resolution, and data analysis in the Docker sandbox.
+- **`BrowserAgent` (Web Researcher):** Specialized in web search, DOM extraction, browser navigation, and scraping.
 </details>
 
 <details>
 <summary><b>🛠️ Workflows & Skills Store</b></summary>
 
-OpenManus features a database-backed **Skills Store** that allows the agent to save and reuse complex workflows:
-- **Workflow Distillation:** The agent can bundle a multi-step workflow (such as scraping a site, extracting data, and formatting a report) into a reusable skill.
-- **Interactive Execution:** Call upon saved skills inside chat sessions to perform automated routines.
+Save and reuse complex workflows through the database-backed Skills Store:
+- **Workflow Distillation:** Distill multi-step execution traces into parameterized, reusable skills.
+- **Interactive Execution:** Trigger registered skills directly within chat sessions.
 </details>
 
 <details>
-<summary><b>🧠 Long-Term Postgres Memory</b></summary>
+<summary><b>📊 Diagnostics & Inspector Workspace</b></summary>
 
-- **Persistent Facts:** Remembers folders, habits, preferences, or credentials across separate chat sessions.
-- **LLM Consolidation:** Periodically merges duplicate memories into a compact list using LLM consolidation to minimize context-window footprint.
-</details>
-
-<details>
-<summary><b>⚡ Context Compacting & AI Summary</b></summary>
-
-- Configurable **Summarization Threshold** (in characters).
-- Automatically compacts old messages and logs when chat size exceeds the limit, maintaining the agent's core context window.
-</details>
-
-<details>
-<summary><b>📊 Agent Workspace & Session Diagnostics</b></summary>
-
-The Diagnostics & Inspector panel on the right side of the interface provides deep visibility into the agent's active session:
-- **Timeline:** Visualization of task steps and agent execution timeline.
-- **Thoughts:** The agent's raw chain-of-thought (thinking blocks) parsed from `<thinking>` tags.
-- **Logs:** Raw logs showing command outputs and terminal execution history.
-- **JSON:** Full session JSON state inspector.
-- **Browser:** Live interactive browser player (CDP stream canvas player).
-- **Files:** Workspace file explorer allowing you to read/inspect files created by the agent in real time.
-- **Prompt:** Inspection of the dynamic System Prompt and injected messages history.
+The collapsible inspector panel on the right offers total visibility into the agent's internal state:
+- **Timeline:** Interactive step-by-step execution timeline with expandable action cards.
+- **Thoughts:** Raw chain-of-thought parsed from `<thinking>` tags.
+- **Console:** Real-time terminal streaming of stdout/stderr outputs.
+- **JSON:** Complete live session state inspector.
+- **Browser:** Interactive Chrome DevTools Protocol (CDP) live canvas stream.
+- **Files:** Real-time workspace file tree with instant code preview.
+- **Prompt:** Live inspection of dynamic system prompt templates and memory injections.
 </details>
 
 ---
 
 ## 🛠️ Prerequisites
 
-Make sure you have these installed:
-- **Node.js** (version `20.x` or higher)
+Ensure the following tools are installed:
+- **Node.js** (`>= 20.0.0`)
 - **pnpm** package manager
-- **PostgreSQL** running locally (or via Docker Compose)
-- **Docker Desktop** (with "Expose daemon on tcp://localhost:2375" checked in settings on Windows)
-- **Ollama (Optional):** If you want to use local models (like `qwen2.5:7b` or `gemma2`). OpenManus also natively supports Groq and OpenAI cloud providers out-of-the-box.
+- **Docker Desktop** (with "Expose daemon on tcp://localhost:2375" enabled on Windows)
+- **PostgreSQL & Neo4j** (Automated via Docker Compose)
+- **Ollama (Optional):** For local models (`qwen2.5:7b`, `gemma2`). OpenManus also natively supports Groq, OpenAI, and custom OpenAI-compatible cloud endpoints.
 
 ---
 
 ## 🚀 Quick Start & Installation
 
-### 1. Database Setup (Docker Compose)
-Run the pre-configured Postgres database container:
+### 1. Database & Graph Services Setup (Docker Compose)
+Start the pre-configured PostgreSQL, Neo4j, and pgAdmin containers:
 ```bash
-# Starts PostgreSQL (exposed on port 5432) and pgAdmin (on port 5050)
+# Starts PostgreSQL (5432), Neo4j (7474/7687), and pgAdmin (5050)
 pnpm run docker:up
 ```
-*Note: The schema is automatically applied and seeded with initial skills on first boot.*
+*Note: The database schema is automatically applied and seeded with core tables and skills on first boot.*
 
-### 2. Environment Variables
-Copy the template and adjust values:
+### 2. Environment Configuration
+Copy the template and configure your local or cloud endpoints:
 ```bash
 cp .env.example .env
 ```
-Inside your `.env`, specify your database credentials:
+Inside your `.env`, review or customize your connection strings:
 ```env
+# PostgreSQL
 POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
 POSTGRES_DB=openmanus
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=postgres
+
+# Neo4j (Mem0 Knowledge Graph)
+NEO4J_ENABLED=true
+NEO4J_URL=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=openmanus_password
+
+# Cloud LLMs (Optional)
+OPENAI_API_KEY=
+GROQ_API_KEY=
 ```
 
 ### 3. Install Dependencies
-OpenManus is structured as a pnpm monorepo workspace. Running install at the root handles both backend and frontend automatically:
+OpenManus is structured as a pnpm monorepo workspace. Running install at the root installs all backend and frontend dependencies:
 ```bash
-# Option A: Automatic installation of all dependencies (root & frontend)
 pnpm install
-```
-Alternatively, you can install them separately if needed:
-```bash
-# Option B: Separate installations
-pnpm install                     # Install backend/root dependencies
-pnpm --filter frontend install   # Install frontend dependencies
 ```
 
 ### 4. Install Browser Binary
-Installs the headless Chrome binary needed for web browsing:
+Download and configure the headless Chrome binary needed for web navigation:
 ```bash
 pnpm run browser:install
 ```
 
 ### 5. Launch the Platform
-Start both the Express backend and Vite frontend concurrently:
+Start the Express backend and Vite frontend concurrently:
 ```bash
 pnpm run dev:all
 ```
 
-- **Frontend Client:** Visit [http://localhost:5173](http://localhost:5173).
-- **Backend API:** Running at [http://localhost:3000](http://localhost:3000).
+- **Frontend Client:** [http://localhost:5173](http://localhost:5173)
+- **Backend API:** [http://localhost:3000](http://localhost:3000)
+- **Neo4j Graph Browser:** [http://localhost:7474](http://localhost:7474) *(User: `neo4j` / Password: `openmanus_password`)*
+- **pgAdmin 4 Web UI:** [http://localhost:5050](http://localhost:5050) *(Email: `admin@openmanus.local` / Password: `admin`)*
+
+---
+
+## 🔒 Security & Secrets Hygiene
+
+OpenManus follows strict security and credential-handling protocols:
+- **Repository Isolation:** `.gitignore` is configured with strict patterns (`.env`, `.env.*`, `*.env`, `*.pem`, `*.key`, `*.cert`) to prevent any local environment configurations or private keys from being staged or committed. Only `.env.example` is tracked as a template.
+- **Masked Database Storage:** When using dynamic DB-backed settings (`ENV_SOURCE=db`), secrets like `OPENAI_API_KEY`, `GROQ_API_KEY`, `NEO4J_PASSWORD`, and `POSTGRES_PASSWORD` are masked before returning via the API.
+- **Container Sandboxing:** All arbitrary code generated by the agent is executed within the sandboxed Docker container with strict CPU, RAM, and PID limitations.
 
 ---
 
