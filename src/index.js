@@ -165,17 +165,20 @@ app.get('/models', async (_req, res) => {
   let openaiModels = [];
   if (openaiEnabled) {
     openaiModels = [...OPENAI_MODELS];
-    const openaiApiKey  = useDbSource ? (settings['OPENAI_API_KEY']  || config.openai.apiKey)  : config.openai.apiKey;
-    const openaiBaseURL = useDbSource ? (settings['OPENAI_BASE_URL'] || config.openai.baseURL) : config.openai.baseURL;
+    const openaiApiKey  = settings['OPENAI_API_KEY']  || config.openai.apiKey;
+    const openaiBaseURL = settings['OPENAI_BASE_URL'] || config.openai.baseURL;
 
     if (openaiApiKey) {
       try {
+        const isOfficialOpenAI = !openaiBaseURL || openaiBaseURL.includes('api.openai.com');
         const openaiClient = new OpenAI({
           baseURL: openaiBaseURL || 'https://api.openai.com/v1',
           apiKey: openaiApiKey,
-          defaultHeaders: {
-            'User-Agent': 'Claude-Desktop/0.7.6',
-          }
+          ...(!isOfficialOpenAI ? {
+            defaultHeaders: {
+              'User-Agent': 'Claude-Desktop/0.7.6',
+            }
+          } : {})
         });
         const liveList = await openaiClient.models.list();
         if (liveList && Array.isArray(liveList.data) && liveList.data.length > 0) {

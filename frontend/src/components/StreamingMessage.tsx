@@ -23,28 +23,44 @@ import MarkdownRenderer from './MarkdownRenderer';
 import { calculateCost, formatTokenCount } from '../utils/pricing';
 
 const parseC1UiBlock = (content: string) => {
-  const openTags = ['<c1_ui>', '<c1-component>', '<thesys>'];
-  const closeTags = ['</c1_ui>', '</c1-component>', '</thesys>'];
+  if (!content) return { payload: null, payloads: [], cleanContent: content };
 
-  for (let i = 0; i < openTags.length; i++) {
-    const openTag = openTags[i];
-    const closeTag = closeTags[i];
-    const openIdx = content.indexOf(openTag);
-    if (openIdx !== -1) {
-      const closeIdx = content.indexOf(closeTag, openIdx + openTag.length);
-      if (closeIdx !== -1) {
-        const payload = content.slice(openIdx + openTag.length, closeIdx).trim();
-        const cleanContent = (content.slice(0, openIdx) + content.slice(closeIdx + closeTag.length)).trim();
-        return { payload, cleanContent };
-      } else {
-        const payload = content.slice(openIdx + openTag.length).trim();
-        const cleanContent = content.slice(0, openIdx).trim();
-        return { payload, cleanContent };
+  const payloads: string[] = [];
+
+  const blockRegex = /(?:```(?:plaintext|text|markdown)?\s*<(?:openui|c1_ui|c1-component|thesys|openui\s+lang)[^>]*>([\s\S]*?)(?:<\/(?:openui|c1_ui|c1-component|thesys|openui\s+lang)>|```)|```(?:openui|openui-lang|open-ui|c1_ui)\b[\r\n]+([\s\S]*?)```|<(openui|c1_ui|c1-component|thesys)[^>]*>([\s\S]*?)<\/\3>)/gi;
+
+  let match;
+  while ((match = blockRegex.exec(content)) !== null) {
+    const raw = match[1] ?? match[2] ?? match[4];
+    if (raw) {
+      let cleaned = raw.replace(/```/g, '').trim();
+      cleaned = cleaned.replace(/^```(?:openui|plaintext|text)?\s*[\r\n]+/, '').replace(/[\r\n]+```$/, '').trim();
+      if (cleaned) {
+        payloads.push(cleaned);
       }
     }
   }
 
-  return { payload: null, cleanContent: content };
+  // Also handle unclosed trailing tag during streaming:
+  if (payloads.length === 0) {
+    const streamingRegex = /<(openui|c1_ui|c1-component|thesys)[^>]*>([\s\S]*?)$/i;
+    const streamMatch = content.match(streamingRegex);
+    if (streamMatch && streamMatch[2]) {
+      let cleaned = streamMatch[2].replace(/```/g, '').trim();
+      cleaned = cleaned.replace(/^```(?:openui|plaintext|text)?\s*[\r\n]+/, '').replace(/[\r\n]+```$/, '').trim();
+      if (cleaned) {
+        payloads.push(cleaned);
+      }
+    }
+  }
+
+  const cleanContent = content
+    .replace(blockRegex, '')
+    .replace(/<(openui|c1_ui|c1-component|thesys)[^>]*>[\s\S]*?$/i, '')
+    .trim();
+  const primaryPayload = payloads.length > 0 ? payloads[0] : null;
+
+  return { payload: primaryPayload, payloads, cleanContent };
 };
 
 export const StreamingMessage: React.FC = () => {
@@ -250,7 +266,7 @@ export const StreamingMessage: React.FC = () => {
 
           {/* Live standard response content */}
           {streamingContent && (() => {
-            const { payload, cleanContent } = parseC1UiBlock(streamingContent);
+            const { payloads, payload, cleanContent } = parseC1UiBlock(streamingContent);
             const cleanText = cleanContent.replace(/<\/?(thinking|thought|think)>/gi, '').trim();
             return (
               <div className="space-y-3 select-text">
@@ -259,9 +275,15 @@ export const StreamingMessage: React.FC = () => {
                     <MarkdownRenderer content={cleanText} className="streaming-cursor" />
                   </div>
                 )}
-                {payload && (
-                  <GenUIRenderer payload={payload} />
-                )}
+                {payloads.length > 0 ? (
+                  <div className="space-y-4">
+                    {payloads.map((pl, idx) => (
+                      <GenUIRenderer key={idx} payload={pl} isStreaming={true} />
+                    ))}
+                  </div>
+                ) : payload ? (
+                  <GenUIRenderer payload={payload} isStreaming={true} />
+                ) : null}
               </div>
             );
           })()}

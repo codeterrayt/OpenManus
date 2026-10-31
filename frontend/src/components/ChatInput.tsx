@@ -302,15 +302,29 @@ export const ChatInput: React.FC = () => {
                   {models.custom && models.custom.map(provider => (
                     provider.enabled && provider.models && provider.models.length > 0 ? (
                       <optgroup key={provider.id} label={`${provider.name} (Custom)`} className="bg-[#121622] text-slate-400">
-                        {provider.models.map(opt => (
-                          <option key={`custom:${provider.id}::${opt}`} value={`custom:${provider.id}::${opt}`} className="bg-[#121622] text-white">
-                            {opt}
-                          </option>
-                        ))}
+                        {provider.models.map(opt => {
+                          const isFree = opt.toLowerCase().includes('free') || opt.toLowerCase().endsWith('-free');
+                          return (
+                            <option key={`custom:${provider.id}::${opt}`} value={`custom:${provider.id}::${opt}`} className="bg-[#121622] text-white">
+                              {opt} {isFree ? '🟢 [FREE]' : ''}
+                            </option>
+                          );
+                        })}
                       </optgroup>
                     ) : null
                   ))}
                 </select>
+                {(() => {
+                  const isFree = selectedModel.toLowerCase().includes('free') || selectedModel.toLowerCase().endsWith('-free');
+                  if (isFree) {
+                    return (
+                      <span className="bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider uppercase shrink-0">
+                        FREE
+                      </span>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
 
               {/* Dynamic Model Thinking / Reasoning Capability Selector */}

@@ -28,6 +28,7 @@ export interface ConversationTurn {
   allThoughts: string[];
   finalAnswer: string;
   genUIPayload?: string | null;
+  genUIPayloads?: string[];
   estimatedPromptTokens: number;
   estimatedCompletionTokens: number;
   totalTokens: number;
@@ -37,28 +38,45 @@ export interface ConversationTurn {
 }
 
 const parseC1UiBlock = (content: string) => {
-  const openTags = ['<c1_ui>', '<c1-component>', '<thesys>'];
-  const closeTags = ['</c1_ui>', '</c1-component>', '</thesys>'];
+  if (!content) return { payload: null, payloads: [], cleanContent: content };
 
-  for (let i = 0; i < openTags.length; i++) {
-    const openTag = openTags[i];
-    const closeTag = closeTags[i];
-    const openIdx = content.indexOf(openTag);
-    if (openIdx !== -1) {
-      const closeIdx = content.indexOf(closeTag, openIdx + openTag.length);
-      if (closeIdx !== -1) {
-        const payload = content.slice(openIdx + openTag.length, closeIdx).trim();
-        const cleanContent = (content.slice(0, openIdx) + content.slice(closeIdx + closeTag.length)).trim();
-        return { payload, cleanContent };
-      } else {
-        const payload = content.slice(openIdx + openTag.length).trim();
-        const cleanContent = content.slice(0, openIdx).trim();
-        return { payload, cleanContent };
+  const payloads: string[] = [];
+
+  // Match all closed XML tags: <openui>...</openui>, <c1_ui>...</c1_ui>, or fenced blocks
+  const blockRegex = /(?:```(?:plaintext|text|markdown)?\s*<(?:openui|c1_ui|c1-component|thesys|openui\s+lang)[^>]*>([\s\S]*?)(?:<\/(?:openui|c1_ui|c1-component|thesys|openui\s+lang)>|```)|```(?:openui|openui-lang|open-ui|c1_ui)\b[\r\n]+([\s\S]*?)```|<(openui|c1_ui|c1-component|thesys)[^>]*>([\s\S]*?)<\/\3>)/gi;
+
+  let match;
+  while ((match = blockRegex.exec(content)) !== null) {
+    const raw = match[1] ?? match[2] ?? match[4];
+    if (raw) {
+      let cleaned = raw.replace(/```/g, '').trim();
+      cleaned = cleaned.replace(/^```(?:openui|plaintext|text)?\s*[\r\n]+/, '').replace(/[\r\n]+```$/, '').trim();
+      if (cleaned) {
+        payloads.push(cleaned);
       }
     }
   }
 
-  return { payload: null, cleanContent: content };
+  // Also handle unclosed trailing tag during streaming:
+  if (payloads.length === 0) {
+    const streamingRegex = /<(openui|c1_ui|c1-component|thesys)[^>]*>([\s\S]*?)$/i;
+    const streamMatch = content.match(streamingRegex);
+    if (streamMatch && streamMatch[2]) {
+      let cleaned = streamMatch[2].replace(/```/g, '').trim();
+      cleaned = cleaned.replace(/^```(?:openui|plaintext|text)?\s*[\r\n]+/, '').replace(/[\r\n]+```$/, '').trim();
+      if (cleaned) {
+        payloads.push(cleaned);
+      }
+    }
+  }
+
+  const cleanContent = content
+    .replace(blockRegex, '')
+    .replace(/<(openui|c1_ui|c1-component|thesys)[^>]*>[\s\S]*?$/i, '')
+    .trim();
+  const primaryPayload = payloads.length > 0 ? payloads[0] : null;
+
+  return { payload: primaryPayload, payloads, cleanContent };
 };
 
 const parseMessageThoughts = (content: string) => {
@@ -114,6 +132,7 @@ export function groupHistoryIntoTurns(history: any[], activeModel: string): Conv
         allThoughts: [],
         finalAnswer: '',
         genUIPayload: null,
+        genUIPayloads: [],
         estimatedPromptTokens: Math.max(80, Math.ceil((msg.content?.length || 0) / 4) + 120),
         estimatedCompletionTokens: 0,
         totalTokens: 0,
@@ -130,6 +149,7 @@ export function groupHistoryIntoTurns(history: any[], activeModel: string): Conv
           allThoughts: [],
           finalAnswer: '',
           genUIPayload: null,
+          genUIPayloads: [],
           estimatedPromptTokens: 150,
           estimatedCompletionTokens: 0,
           totalTokens: 0,
@@ -164,7 +184,12 @@ export function groupHistoryIntoTurns(history: any[], activeModel: string): Conv
           currentTurn.allThoughts.push(thoughts);
         }
         if (response) {
-          currentTurn.finalAnswer = response;
+          const { payload, payloads, cleanContent } = parseC1UiBlock(response);
+          if (payloads.length > 0) {
+            currentTurn.genUIPayloads = payloads;
+            currentTurn.genUIPayload = payload;
+          }
+          currentTurn.finalAnswer = cleanContent || (payload ? '' : response);
         }
         currentTurn.estimatedCompletionTokens += Math.ceil(msg.content.length / 4);
       }
@@ -220,8 +245,12 @@ export function groupHistoryIntoTurns(history: any[], activeModel: string): Conv
 
 function finalizeTurn(turn: ConversationTurn, activeModel: string) {
   if (turn.finalAnswer) {
-    const { payload, cleanContent } = parseC1UiBlock(turn.finalAnswer);
-    turn.genUIPayload = payload;
+    const { payload, payloads, cleanContent } = parseC1UiBlock(turn.finalAnswer);
+    if (payloads.length > 0) {
+      const combined = [...(turn.genUIPayloads || []), ...payloads];
+      turn.genUIPayloads = Array.from(new Set(combined));
+      turn.genUIPayload = turn.genUIPayloads[0] || payload;
+    }
     turn.finalAnswer = cleanContent;
   }
   turn.totalTokens = turn.estimatedPromptTokens + turn.estimatedCompletionTokens;
@@ -275,7 +304,8 @@ export const ConversationTurnItem: React.FC<ConversationTurnItemProps> = ({
   };
 
   const thoughtsCombined = turn.allThoughts.filter(Boolean).join('\n\n---\n\n');
-  const hasAssistantContent = Boolean(turn.finalAnswer || turn.toolCalls.length > 0 || thoughtsCombined);
+  const hasUiPayload = Boolean((turn.genUIPayloads && turn.genUIPayloads.length > 0) || turn.genUIPayload);
+  const hasAssistantContent = Boolean(turn.finalAnswer || hasUiPayload || turn.toolCalls.length > 0 || thoughtsCombined);
 
   return (
     <div className="space-y-6">
@@ -381,10 +411,16 @@ export const ConversationTurnItem: React.FC<ConversationTurnItemProps> = ({
                 </div>
               )}
 
-              {/* 4. Generative UI component (if present) */}
-              {turn.genUIPayload && (
-                <GenUIRenderer payload={turn.genUIPayload} />
-              )}
+              {/* 4. Generative UI component(s) */}
+              {turn.genUIPayloads && turn.genUIPayloads.length > 0 ? (
+                <div className="space-y-4">
+                  {turn.genUIPayloads.map((pl, idx) => (
+                    <GenUIRenderer key={idx} payload={pl} isStreaming={false} />
+                  ))}
+                </div>
+              ) : turn.genUIPayload ? (
+                <GenUIRenderer payload={turn.genUIPayload} isStreaming={false} />
+              ) : null}
 
               {/* 5. Metrics & Actions Footer */}
               <div className="flex items-center justify-between border-t border-white/[0.06] pt-2.5 mt-2 select-none text-[11px]">

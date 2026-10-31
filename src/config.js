@@ -84,12 +84,17 @@ export async function resolveConfig(getEnvSettingsFn) {
     }
 
     if (source !== 'db') {
-      // .env mode — use static config but overlay the database enabled flags & custom providers
+      // .env mode — use static config but overlay the database enabled flags, keys & custom providers
+      const openaiApiKey = settings['OPENAI_API_KEY'] || config.openai.apiKey;
+      const openaiBaseURL = settings['OPENAI_BASE_URL'] || config.openai.baseURL;
+      const groqApiKey = settings['GROQ_API_KEY'] || config.groq.apiKey;
+      const groqBaseURL = settings['GROQ_BASE_URL'] || config.groq.baseURL;
+
       return {
         ...config,
         ollama: { ...config.ollama, enabled: ollamaEnabled },
-        groq:   { ...config.groq,   enabled: groqEnabled },
-        openai: { ...config.openai, enabled: openaiEnabled },
+        groq:   { ...config.groq,   apiKey: groqApiKey, baseURL: groqBaseURL, enabled: groqEnabled },
+        openai: { ...config.openai, apiKey: openaiApiKey, baseURL: openaiBaseURL, enabled: openaiEnabled },
         customProviders,
       };
     }

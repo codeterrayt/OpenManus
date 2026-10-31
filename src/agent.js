@@ -44,17 +44,24 @@ const llm = new OpenAI({
 
 // OpenAI Futuristic/Available model mappings to real API endpoints
 const OPENAI_MODEL_MAPPING = {
-  'gpt-5.5-pro': 'o1',
+  'gpt-5.6-sol': 'gpt-4o',
+  'gpt-5.6-terra': 'gpt-4o',
+  'gpt-5.6-luna': 'gpt-4o-mini',
+  'gpt-5.5-pro': 'gpt-4o',
   'gpt-5.5-flagship': 'gpt-4o',
   'gpt-5.4-standard': 'gpt-4o',
+  'gpt-5.4-terra': 'gpt-4o',
   'gpt-5.4-mini': 'gpt-4o-mini',
   'gpt-5.4-nano': 'gpt-4o-mini',
-  'o4-mini': 'o3-mini',
-  'o3-mini': 'o3-mini',
-  'o1': 'o1',
-  'o1-mini': 'o1-mini',
+  'o4-mini': 'gpt-4o-mini',
+  'o3-mini': 'gpt-4o-mini',
+  'o1': 'gpt-4o',
+  'o1-mini': 'gpt-4o-mini',
   'gpt-4o': 'gpt-4o',
   'gpt-4o-mini': 'gpt-4o-mini',
+  'gpt-4.1': 'gpt-4.1',
+  'gpt-4.1-mini': 'gpt-4.1-mini',
+  'gpt-5-mini': 'gpt-5-mini',
 };
 
 function getGroqTpmLimit(modelId) {
@@ -88,7 +95,7 @@ function getToolDefinitions(isGroqModel) {
       }
     };
     const shortDescriptions = {
-      run_code: 'Execute Python, Node.js, or Bash code in the sandbox container. Returns stdout/stderr.',
+      run_code: 'Execute Python, Node.js, or Bash code in the sandbox container. Returns stdout/stderr. Do NOT use for in-chat visual dashboards, comparisons, or UI components — use native OpenUI in chat instead.',
       browse_web: 'Navigate to a URL and click, type, screenshot, evaluate, or solve challenge. Always inspect first.',
       inspect_page_html: 'Search current page DOM for query string. Returns selectors. Call before browse_web click/type.',
       docker: 'Run docker subcommands on the host (e.g. ps, stop, logs, compose up -d). Do not run build.',
@@ -127,8 +134,8 @@ const TOOL_DEFINITIONS = [
       name: 'run_code',
       description:
         'Execute Python, Node.js, or Bash/Shell code in a stateful, persistent Docker container with full root access. ' +
-        'Returns stdout and stderr. Use this to perform any shell command execution, background server launching, compilation, file/folder creation and manipulation, or script running. ' +
-        'You have full root access to the entire container environment. Do NOT refuse to create files, directories, or start server/background processes. ' +
+        'Returns stdout and stderr. Use this to perform shell command execution, servers, compilation, file manipulation, heavy computing, or script running. ' +
+        'IMPORTANT: Do NOT use run_code to generate visual charts, dashboards, comparisons, or UI for the chat — use native OpenUI in your conversational response instead. ' +
         'If your code starts a web server or service, specify the port(s) in the "ports" array so the user can access it at http://localhost:<port>.',
       parameters: {
         type: 'object',
@@ -754,6 +761,33 @@ const SYSTEM_PROMPT = `You are OpenManus, an autonomous AI agent that executes t
 - Host network mode: YES (all container ports bind to host localhost on Windows automatically).
 - Libraries NOT pre-installed — install with pip/npm/apt before use.
 
+## INTELLIGENT DECISION MATRIX: OPENUI (IN-CHAT INTERACTIVE) VS PYTHON SANDBOX (CONTAINER)
+When the user asks to "visualize", "show in UI", "render", "compare", "dashboard", "chart", "table", "form", "cards", or "mockup", you MUST make a deliberate choice:
+
+1. **CHOOSE OPENUI IN CHAT (ZERO TOOL CALLS — PURE TEXT RESPONSE)**:
+   - **WHEN TO USE**:
+     • User asks to "see on UI", "visualize", "show in UI", "render on UI", "create charts", "make a dashboard", "compare on UI"
+     • Comparing models, frameworks, architectures (e.g. Anthropic vs ChatGPT, React vs Vue)
+     • Interactive KPI metric cards (revenue, users, latency, stats)
+     • Interactive charts (BarChart, LineChart, AreaChart, PieChart)
+     • Data tables, rosters, and schedules
+     • Interactive forms (Login, Signup, Feedback, Survey, Settings, Filters)
+     • Accordions, Tabs, and organized multi-section content
+   - **HOW TO EXECUTE**: Output the \`<openui> ... </openui>\` component block directly in your final chat message response.
+   - **STRICT PROHIBITION**:
+     • DO NOT call \`run_code\`, python matplotlib/seaborn, or Docker containers for in-chat visualization! The user has OpenUI built into the chat window specifically for this.
+     • DO NOT call \`browse_web\` when asked to show UI!
+     • DO NOT write \`.ui\` files to \`/workspace/charts.ui\` using \`write_file\`!
+     • NEVER say "there was an issue with rendering the OpenUI components directly in this environment" — OpenUI is natively active in the chat!
+     • If synthetic data is requested ("u do synthetic" or user asks for data you don't have), invent realistic numbers directly in the OpenUI code. Do NOT run Python scripts to compute synthetic numbers!
+
+2. **CHOOSE PYTHON SANDBOX (\`run_code\`)**:
+   - **WHEN TO USE**:
+     • User specifically asks for Python execution (e.g. "write a python script to...", "run this python code")
+     • Heavy data computation or algorithmic processing (e.g. pandas dataframes with thousands of rows, numpy tensor operations, training ML models)
+     • Generating and saving physical image files or documents to disk (e.g. "save a chart to /workspace/plot.png", "generate a PDF report")
+     • Web servers, background services, APIs, database operations, or file system commands.
+
 ## ROBUST EXECUTION FRAMEWORK (Plan-Execute-Verify-Proceed)
 To ensure 100% accuracy on all tasks (especially on smaller/weaker models), you MUST strictly follow this loop:
 1. **Plan**: On your first turn, write out a numbered checklist of steps to accomplish the goal.
@@ -972,40 +1006,112 @@ The Docker sandbox (\`openmanus-sandbox\`) runs on a Linux environment, which ex
 - Whenever you call a tool, you MUST write a short, clear status message outside the <thinking>...</thinking> tags explaining what tool you are invoking, the reason for calling it, and what it is doing (e.g. 'I am going to check if the node image is available locally...', or 'I will execute the script in the Node.js sandbox to start the server...').
 - This ensures the user is kept fully informed of each tool invocation in the chat feed, explaining the purpose of every execution step in a proper conversational flow.
 
-### RULE 20 — INTERACTIVE GENERATIVE UI (GENUI) RENDERING
-- You have a Generative UI engine in the frontend. When the user wants an interactive widget, form, calculator, card, table, list, stats, or progress bar in the chat, wrap a JSON schema inside '<c1_ui>' tags.
-- Do NOT use 'run_code' or 'write_file' for this. Output the block in your text response.
-- CRITICAL: JSON only. NEVER include JavaScript functions, code, or callbacks (onSubmit, onClick, etc.). The renderer handles all interactivity automatically.
-- Supported types:
-  1. **form** — Fields: text, number, email, date, time, select, textarea, checkbox, range.
-     <c1_ui>{ "type": "form", "title": "Booking", "fields": [
-       { "name": "city", "type": "text", "label": "City", "required": true },
-       { "name": "date", "type": "date", "label": "Date" },
-       { "name": "guests", "type": "select", "label": "Guests", "options": ["1","2","3+"] }
-     ], "submitLabel": "Book Now" }</c1_ui>
-  2. **form+compute** — Calculator/converter. Use number fields + select with math operations. Auto-detected:
-     <c1_ui>{ "type": "form", "title": "Calculator", "fields": [
-       { "name": "a", "type": "number", "label": "Number 1", "required": true },
-       { "name": "b", "type": "number", "label": "Number 2", "required": true },
-       { "name": "op", "type": "select", "label": "Operation", "options": ["Add","Subtract","Multiply","Divide"], "required": true }
-     ], "submitLabel": "Calculate" }</c1_ui>
-  3. **table** — Sortable data table:
-     <c1_ui>{ "type": "table", "title": "Scores", "columns": [
-       { "key": "name", "label": "Name" },{ "key": "score", "label": "Score" }
-     ], "rows": [{ "name": "Alice", "score": 95 },{ "name": "Bob", "score": 87 }] }</c1_ui>
-  4. **card** — Key-value info card:
-     <c1_ui>{ "type": "card", "title": "Status", "items": [{ "label": "CPU", "value": "45%" },{ "label": "RAM", "value": "2.1GB" }] }</c1_ui>
-  5. **stats** — Stats dashboard with trend indicators:
-     <c1_ui>{ "type": "stats", "title": "Metrics", "items": [
-       { "label": "Users", "value": 1250, "change": "+12%" },
-       { "label": "Revenue", "value": "$8.4k", "change": "+5%" }
-     ] }</c1_ui>
-  6. **progress** — Progress bars (value 0-100):
-     <c1_ui>{ "type": "progress", "title": "Tasks", "items": [
-       { "label": "Frontend", "value": 85 },{ "label": "Backend", "value": 60 }
-     ] }</c1_ui>
-  7. **list** — Ordered/unordered list:
-     <c1_ui>{ "type": "list", "title": "Steps", "ordered": true, "items": ["Install","Configure","Deploy"] }</c1_ui>
+### RULE 20 — INTERACTIVE GENERATIVE UI (OPENUI) RENDERING
+- **NATIVE CHAT UI RENDERING**: You have an OpenUI (openui.com) Generative UI engine directly embedded inside the chat interface. When the user asks to "see on UI", "render in UI", "visualize on UI", "show in UI", or requests a dashboard, table, comparison, chart, form, or card, you MUST output an \`<openui> ... </openui>\` block directly in your conversational response.
+- **NEVER CALL TOOLS FOR CHAT UI**: DO NOT call \`browse_web\`, \`run_code\`, \`write_file\`, or any other tool when asked to render UI! The \`browse_web\` tool is only for external websites, NEVER for rendering chat UI. OpenUI is rendered automatically by the chat frontend from your \`<openui> ... </openui>\` tags!
+- **PRIMARY TAG**: Always write \`<openui>\` and \`</openui>\` (or \`<c1_ui>\`). Do NOT wrap the tag in markdown fences (\`\`\`). Write the raw tags directly in text:
+<openui>
+root = Stack([title, content])
+...
+</openui>
+
+- **OPENUI LANG SYNTAX RULES**:
+  1. Each statement is on its own line: \`identifier = Expression\`
+  2. \`root\` is the entry point — every program MUST define \`root = Stack([items...])\`
+  3. Arguments are POSITIONAL (order matters). Write \`Table([Col("A", [1, 2])])\` NOT \`Table(columns=...)\`.
+  4. Strings use double quotes with backslash escaping: "Hello \\"World\\""
+  5. Every variable must be referenced by another variable, leading up to \`root\`.
+
+- **OFFICIAL COMPONENT EXAMPLES**:
+  1. **Tabs & Comparison (Ideal for Comparing Anthropic vs ChatGPT, Frameworks, etc.)**:
+     <openui>
+     root = Stack([title, tabs])
+     title = TextContent("Anthropic vs ChatGPT", "large-heavy")
+     tabs = Tabs([tabClaude, tabGPT])
+     tabClaude = TabItem("claude", "Anthropic Claude", claudeItems)
+     tabGPT = TabItem("gpt", "ChatGPT (OpenAI)", gptItems)
+     claudeItems = [TextContent("Claude focuses on alignment, Constitutional AI, and exceptional coding/reasoning."), Callout("info", "Strengths", "200K+ context window, artifact generation, precise instruction following")]
+     gptItems = [TextContent("ChatGPT focuses on multimodal intelligence, vast tool ecosystem, and voice interaction."), Callout("success", "Strengths", "GPT Store, deep web integration, high throughput API")]
+     </openui>
+
+  2. **Table (Column-oriented)**:
+     <openui>
+     root = Stack([title, tbl])
+     title = TextContent("Model Benchmark Scores", "large-heavy")
+     tbl = Table([Col("Model", models), Col("MMLU (%)", mmlu), Col("HumanEval (%)", code), Col("Context", ctx)])
+     models = ["Claude 3.5 Sonnet", "GPT-4o", "Claude 3 Opus", "GPT-4o-mini"]
+     mmlu = [88.7, 87.2, 86.8, 82.0]
+     code = [92.0, 90.2, 84.9, 87.0]
+     ctx = ["200K", "128K", "200K", "128K"]
+     </openui>
+
+  3. **Bar Chart & Line Chart (DAU, MAU, Benchmarks, Metrics)**:
+     <openui>
+     root = Stack([title, dauChart, mauChart])
+     title = TextContent("Play Store App Metrics (DAU & MAU)", "large-heavy")
+     dauChart = BarChart(dauLabels, [dauSeries], "grouped")
+     dauLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+     dauSeries = Series("Daily Active Users (k)", [15, 23, 32, 28, 24, 36, 40])
+     mauChart = LineChart(mauLabels, [mauSeries])
+     mauLabels = ["Week 1", "Week 2", "Week 3", "Week 4"]
+     mauSeries = Series("Monthly Active Users (k)", [350, 420, 510, 680])
+     </openui>
+     *Rule*: BarChart and LineChart take (labels, [Series("Title", [numbers])]). ALWAYS wrap numbers in Series(...) inside an array! Never pass bare numbers or Python range()!
+
+  4. **KPI Metric Cards**:
+     <openui>
+     root = Stack([header, kpis])
+     header = InlineHeader("Monthly Performance", "System and model metrics")
+     kpis = SnippetCardBlock([k1, k2, k3])
+     k1 = SnippetCardItem("m1", IconText(Icon("circle-dollar-sign", "finance"), "neutral", "m", "Cost Savings", "vs last month", false, "horizontal"), BoldText("number", "$3,420", "+14.2%", "metric"))
+     k2 = SnippetCardItem("m2", IconText(Icon("users", "people"), "neutral", "m", "Active Users", "Weekly active", false, "horizontal"), BoldText("number", "12,480", "+5.1%", "metric"))
+     k3 = SnippetCardItem("m3", IconText(Icon("clock", "time"), "neutral", "m", "Latency", "P95 response", false, "horizontal"), BoldText("number", "420ms", "-18%", "metric"))
+     </openui>
+
+  5. **Interactive Form**:
+     <openui>
+     root = Stack([title, form])
+     title = TextContent("Feedback Form", "large-heavy")
+     form = Form("feedback", btns, [f1, f2, f3])
+     f1 = FormControl("Your Name", Input("name", "Enter name", "text", { required: true }))
+     f2 = FormControl("Preferred Model", Select("model", [SelectItem("claude", "Claude 3.5 Sonnet"), SelectItem("gpt4o", "GPT-4o")], "Select model...", { required: true }))
+     f3 = FormControl("Comments", TextArea("comments", "Write feedback...", 3, { required: false }))
+     btns = Buttons([Button("Submit", @ToAssistant("Submit feedback"), "primary")])
+     </openui>
+
+  6. **Accordion (Structured deep-dive)**:
+     <openui>
+     root = Stack([title, acc])
+     title = TextContent("Detailed Model Comparison", "large-heavy")
+     acc = Accordion([a1, a2, a3])
+     a1 = AccordionItem("Architecture & Training", [TextContent("Anthropic uses Constitutional AI and RLHF. OpenAI uses iterative fine-tuning and safety filters.")])
+     a2 = AccordionItem("Speed & Latency", [TextContent("GPT-4o delivers high tokens-per-second, while Claude 3.5 Sonnet balances speed with deep reasoning.")])
+     a3 = AccordionItem("Pricing & Limits", [TextContent("Both offer competitive tier pricing with generous developer rate limits.")])
+     </openui>
+
+  7. **Unified Executive Dashboard (Composing Multiple Visual Components Together)**:
+     - When the user asks for multiple visual components (e.g. KPIs, charts, tabs, accordions, modals), **compose them together into ONE cohesive dashboard** under a single \`root = Stack([...])\` inside ONE \`<openui>\` block!
+     - Do NOT split the request into separate fragmented code snippets unless explicitly asked to provide separate examples.
+     <openui>
+     root = Stack([dashHeader, kpis, dashTabs, faqAcc, modalSection])
+     dashHeader = InlineHeader("Executive Analytics Dashboard", "Real-time metrics, growth trends & FAQs")
+     kpis = SnippetCardBlock([k1, k2, k3])
+     k1 = SnippetCardItem("m1", IconText(Icon("circle-dollar-sign", "finance"), "neutral", "m", "Total Revenue", "Monthly", false, "horizontal"), BoldText("number", "$124,500", "+12.4%", "metric"))
+     k2 = SnippetCardItem("m2", IconText(Icon("users", "people"), "neutral", "m", "Active Users", "Weekly", false, "horizontal"), BoldText("number", "45,200", "+8.1%", "metric"))
+     k3 = SnippetCardItem("m3", IconText(Icon("clock", "time"), "neutral", "m", "Latency", "P95 response", false, "horizontal"), BoldText("number", "240ms", "-4.5%", "metric"))
+     dashTabs = Tabs([tabOverview, tabCharts])
+     tabOverview = TabItem("overview", "Overview", [TextContent("Welcome to the unified analytics hub. Track revenue, user engagement, and operational latency in real time.", "normal")])
+     tabCharts = TabItem("charts", "Growth Trends", [revenueChart])
+     revenueChart = LineChart(months, [revSeries])
+     months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"]
+     revSeries = Series("Revenue Growth ($k)", [18, 24, 32, 28, 38, 45])
+     faqAcc = Accordion([faq1, faq2])
+     faq1 = AccordionItem("How often is metrics data refreshed?", [TextContent("Real-time telemetry syncs every 60 seconds with automated anomaly detection.")])
+     faq2 = AccordionItem("How to export reports?", [TextContent("Reports can be exported in CSV, JSON, and PDF from the settings menu.")])
+     modalSection = Stack([modalNotice, updateModal])
+     modalNotice = TextContent("System Maintenance", "small")
+     updateModal = Modal("maintModal", "Scheduled Maintenance", [TextContent("System upgrades are scheduled for Sunday at 02:00 UTC.", "normal"), Buttons([Button("Acknowledge", @ToAssistant("Maintenance acknowledged"), "primary")])])
+     </openui>
 
 ### RULE 21 — SELECTIVE & MEANINGFUL MEMORY PERSISTENCE (MEM0 & KNOWLEDGE GRAPH)
 - **High Signal & Quality over Quantity**: Do NOT store everything in factual, episodic, or the knowledge graph. Never store small talk, greetings ("hi", "thanks", "ok"), temporary scratch instructions, single typos, fleeting debugging status, or transient queries.
@@ -1460,14 +1566,27 @@ export async function runAgent(
     cleanModel = parts[1];
   }
 
+  const customProviders = activeConfig.customProviders || [];
+  
+  let selectedCustom = null;
+  if (targetProvider && targetProvider.startsWith('custom:')) {
+    const customId = targetProvider.replace(/^custom:/, '');
+    selectedCustom = customProviders.find(p => p.id === customId || p.name === customId);
+  } else if (targetProvider && targetProvider !== 'openai' && targetProvider !== 'groq' && targetProvider !== 'ollama') {
+    selectedCustom = customProviders.find(p => p.id === targetProvider || p.name === targetProvider);
+  } else if (!targetProvider) {
+    selectedCustom = customProviders.find(p => Array.isArray(p.models) && p.models.includes(cleanModel));
+  }
+
+  const isSelectedCustom = Boolean(selectedCustom);
   const resolvedModel = cleanModel ?? activeConfig.ollama.model;
-  const isOpenAI = resolvedModel && (
+  const isOpenAI = !isSelectedCustom && (targetProvider === 'openai' || (!targetProvider && resolvedModel && (
     resolvedModel.startsWith('gpt-') ||
     resolvedModel.startsWith('o1') ||
     resolvedModel.startsWith('o3') ||
     resolvedModel.startsWith('o4')
-  );
-  const isGroq = resolvedModel && (
+  )));
+  const isGroq = !isSelectedCustom && !isOpenAI && (targetProvider === 'groq' || (!targetProvider && resolvedModel && (
     resolvedModel.startsWith('llama-') ||
     resolvedModel.startsWith('llama3-') ||
     resolvedModel.startsWith('deepseek-') ||
@@ -1475,10 +1594,19 @@ export async function runAgent(
     resolvedModel.startsWith('groq/') ||
     resolvedModel.includes('/') ||
     resolvedModel.startsWith('allam-')
-  );
-  const targetModelName = (isOpenAI && !targetProvider?.startsWith('custom:')) 
+  )));
+  const targetModelName = (isOpenAI && !isSelectedCustom) 
     ? (OPENAI_MODEL_MAPPING[resolvedModel] ?? resolvedModel) 
     : resolvedModel;
+
+  const openaiApiKey = activeConfig.openai?.apiKey || process.env.OPENAI_API_KEY || '';
+  if (isOpenAI && !openaiApiKey) {
+    const errMsg = 'OPENAI_API_KEY is not configured. Please add it in Settings → Environments or in your .env file.';
+    console.error(`[Agent] ${errMsg}`);
+    await finaliseSession(sessionId, 'failed', errMsg).catch(() => {});
+    onEvent('error', { message: errMsg });
+    return { sessionId, result: errMsg };
+  }
 
   const groqApiKey = activeConfig.groq?.apiKey || process.env.GROQ_API_KEY || '';
   if ((targetProvider === 'groq' || (!targetProvider && isGroq)) && !groqApiKey) {
@@ -1510,7 +1638,7 @@ WORKFLOW:
 CRITICAL RULES:
 - Before calling browse_web (except extract_text/screenshot), you MUST call inspect_page_html first to get the selector. Never guess selectors.
 - Keep thoughts extremely brief (1-2 sentences) to fit context token limits.
-- GENERATIVE UI: To render interactive forms/widgets in chat, output: \`<c1_ui><content>{ "type": "form", "fields": [...] }</content></c1_ui>\`. Do not write this to files or call tools for it.`;
+- GENERATIVE UI (OPENUI): When the user asks to see something in UI, render in UI, or requests a dashboard/comparison/table/form/widget, output OpenUI Lang directly inside \`<openui>\` tags in your conversational response. NEVER call browse_web, run_code, or any tools for UI. Example: \`<openui>\nroot = Stack([title, tabs])\ntitle = TextContent("Comparison", "large-heavy")\ntabs = Tabs([TabItem("a", "Option A", [TextContent("Info A")]), TabItem("b", "Option B", [TextContent("Info B")])])\n</openui>\`.`;
   } else if (agent === 'CoderAgent') {
     systemPrompt += `\n\nAgent Profile: You are running in CoderAgent mode. Focus entirely on writing code, debugging, executing scripts in Node/Python/Bash, resolving environment packages, and performing math/data computations inside the Docker sandbox. Minimize web browsing unless specifically required to search for libraries.`;
   } else {
@@ -1558,16 +1686,6 @@ Before you call any browse_web action (except 'extract_text' or 'screenshot'), y
 
 
 
-  const customProviders = activeConfig.customProviders || [];
-  
-  let selectedCustom = null;
-  if (targetProvider && targetProvider.startsWith('custom:')) {
-    const customId = targetProvider.replace(/^custom:/, '');
-    selectedCustom = customProviders.find(p => p.id === customId || p.name === customId);
-  } else if (targetProvider && targetProvider !== 'openai' && targetProvider !== 'groq' && targetProvider !== 'ollama') {
-    selectedCustom = customProviders.find(p => p.id === targetProvider || p.name === targetProvider);
-  }
-
   let llmClient;
   let providerLabel = 'Ollama';
 
@@ -1580,42 +1698,32 @@ Before you call any browse_web action (except 'extract_text' or 'screenshot'), y
         'User-Agent': 'Claude-Desktop/0.7.6',
       }
     });
-  } else if (targetProvider === 'openai' || (!targetProvider && isOpenAI)) {
+  } else if (isOpenAI) {
     providerLabel = 'OpenAI';
     const openaiKey = activeConfig.openai?.apiKey || process.env.OPENAI_API_KEY || '';
     const openaiURL = activeConfig.openai?.baseURL;
+    const isOfficialOpenAI = !openaiURL || openaiURL.includes('api.openai.com');
     llmClient = new OpenAI({
       apiKey:  openaiKey,
       ...(openaiURL && openaiURL !== 'https://api.openai.com/v1' ? { baseURL: openaiURL } : {}),
-      defaultHeaders: {
-        'User-Agent': 'Claude-Desktop/0.7.6',
-      }
+      ...(!isOfficialOpenAI ? {
+        defaultHeaders: {
+          'User-Agent': 'Claude-Desktop/0.7.6',
+        }
+      } : {})
     });
-  } else if (targetProvider === 'groq' || (!targetProvider && isGroq)) {
+  } else if (isGroq) {
     providerLabel = 'Groq';
     llmClient = new OpenAI({
       baseURL: activeConfig.groq?.baseURL || 'https://api.groq.com/openai/v1',
       apiKey:  groqApiKey,
     });
   } else {
-    // If no explicit provider was chosen, check if a custom provider provides this model
-    const matchingCustom = !targetProvider ? customProviders.find(p => Array.isArray(p.models) && p.models.includes(resolvedModel)) : null;
-    if (matchingCustom) {
-      providerLabel = matchingCustom.name || 'Custom';
-      llmClient = new OpenAI({
-        baseURL: matchingCustom.baseURL,
-        apiKey:  matchingCustom.apiKey || 'custom',
-        defaultHeaders: {
-          'User-Agent': 'Claude-Desktop/0.7.6',
-        }
-      });
-    } else {
-      providerLabel = 'Ollama';
-      llmClient = new OpenAI({
-        baseURL: activeConfig.ollama.baseURL,
-        apiKey:  activeConfig.ollama.apiKey,
-      });
-    }
+    providerLabel = 'Ollama';
+    llmClient = new OpenAI({
+      baseURL: activeConfig.ollama.baseURL,
+      apiKey:  activeConfig.ollama.apiKey,
+    });
   }
 
   console.log(`[Agent] Route LLM | model=${resolvedModel} (mapped to ${targetModelName}) provider=${providerLabel}`);
@@ -1674,25 +1782,26 @@ Before you call any browse_web action (except 'extract_text' or 'screenshot'), y
     // ── Context Window & Summarization Management ─────────────────────────────
     const nonSystemMsgs = messages.filter(m => m.role !== 'system');
     
+    // Resolve context threshold for both summarization & local Ollama num_ctx
+    let threshold = contextOpts.summaryThreshold ? Number(contextOpts.summaryThreshold) : null;
+    if (!threshold) {
+      if (isGroq) {
+        const groqTpmLimit = getGroqTpmLimit(resolvedModel);
+        threshold = Math.floor(groqTpmLimit * 0.70); // 70% of TPM limit (in tokens)
+      } else {
+        const isLargeContextModel = isOpenAI || isSelectedCustom || (resolvedModel && (
+          resolvedModel.includes('13b') || 
+          resolvedModel.includes('14b') || 
+          resolvedModel.includes('32b') || 
+          resolvedModel.includes('70b') || 
+          resolvedModel.includes('e4b')
+        ));
+        threshold = isLargeContextModel ? 80000 : 40000;
+      }
+    }
+
     // Only perform automatic compaction if autoSummarize is enabled and strategy is not 'off'
     if (contextOpts.autoSummarize && contextOpts.summaryStrategy !== 'off') {
-      let threshold = contextOpts.summaryThreshold ? Number(contextOpts.summaryThreshold) : null;
-      if (!threshold) {
-        if (isGroq) {
-          const groqTpmLimit = getGroqTpmLimit(resolvedModel);
-          threshold = Math.floor(groqTpmLimit * 0.70); // 70% of TPM limit (in tokens)
-        } else {
-          const isLargeContextModel = isOpenAI || (resolvedModel && (
-            resolvedModel.includes('13b') || 
-            resolvedModel.includes('14b') || 
-            resolvedModel.includes('32b') || 
-            resolvedModel.includes('70b') || 
-            resolvedModel.includes('e4b')
-          ));
-          threshold = isLargeContextModel ? 80000 : 40000;
-        }
-      }
-      
       const SUMMARIZE_TOKEN_THRESHOLD = Number(process.env.SUMMARIZE_THRESHOLD ?? threshold);
       const currentTokenEstimate = estimateTokens(nonSystemMsgs);
 
@@ -1728,6 +1837,16 @@ Before you call any browse_web action (except 'extract_text' or 'screenshot'), y
     // ── Call the LLM (streaming) ──────────────────────────────────────────────
     onEvent('llm_thinking', { step: step + 1 });
 
+    const isPureChatUI = /(?:see on ui|show on ui|render on ui|visualize on ui|in ui not via python|create charts|create a chart|draw a chart|show charts|build ui|make ui|login form on ui|dashboard on ui)/i.test(goal) &&
+      !/(?:browse|scrape|curl|fetch|http|docker|psql|sql|database|install|npm|pip)/i.test(goal);
+
+    if (isPureChatUI && step === 0) {
+      messages.push({
+        role: 'system',
+        content: '[CRITICAL UI DIRECTIVE] The user requested native in-chat UI (OpenUI). DO NOT call run_code, python, bash, browse_web, or write_file. Output the <openui>...</openui> component directly in your conversational response. For charts/metrics, use realistic synthetic numbers. Do NOT write .ui files to disk.'
+      });
+    }
+
     const { thinkingBudget, reasoningEffort } = thinkingOptions || {};
     const lowerModel = (resolvedModel || '').toLowerCase();
     const isClaudeModel = lowerModel.includes('claude') || lowerModel.includes('anthropic');
@@ -1749,7 +1868,7 @@ Before you call any browse_web action (except 'extract_text' or 'screenshot'), y
       model:       targetModelName,
       messages:    sanitizedMessages,
       tools:       getToolDefinitions(isGroq),
-      tool_choice: 'auto',
+      tool_choice: isPureChatUI ? 'none' : 'auto',
       stream:      true,   // ← live token streaming
     };
 
@@ -1788,8 +1907,8 @@ Before you call any browse_web action (except 'extract_text' or 'screenshot'), y
       }
     }
 
-    // Ollama-specific options — ignored by OpenAI (extra_body is forwarded as-is)
-    if (!isOpenAI && !isGroq) {
+    // Ollama-specific options — ONLY sent for local Ollama, never for OpenAI or Custom Providers
+    if (!isOpenAI && !isGroq && !isSelectedCustom && providerLabel === 'Ollama') {
       completionParams.options = {
         // Dynamically scale context limit based on threshold so Ollama doesn't silently truncate messages
         num_ctx:    Number(process.env.OLLAMA_NUM_CTX  ?? (Math.ceil(threshold / 4) + 8192)),

@@ -46,11 +46,25 @@ export const MODEL_PRICING_TABLE: Record<string, ModelPricing> = {
   'gemma2-9b-it': { inputPerMillion: 0, outputPerMillion: 0, isFree: true },
 };
 
+export function isModelFree(modelName: string): boolean {
+  if (!modelName) return true;
+  const clean = modelName.includes('::') ? modelName.split('::')[1] : modelName;
+  const lower = clean.toLowerCase();
+  if (lower.includes('free') || lower.endsWith('-free')) return true;
+  const pricing = getModelPricing(clean);
+  return !!pricing.isFree;
+}
+
 export function getModelPricing(modelName: string): ModelPricing {
   if (!modelName) return { inputPerMillion: 0, outputPerMillion: 0, isFree: true };
   const clean = modelName.includes('::') ? modelName.split('::')[1] : modelName;
   const lower = clean.toLowerCase();
   
+  // Any model with 'free' in its ID or name (e.g. OpenCode free tier models)
+  if (lower.includes('free') || lower.endsWith('-free')) {
+    return { inputPerMillion: 0, outputPerMillion: 0, isFree: true };
+  }
+
   for (const [key, pricing] of Object.entries(MODEL_PRICING_TABLE)) {
     if (lower.includes(key)) return pricing;
   }
